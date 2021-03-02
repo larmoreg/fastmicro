@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "fastmicro"
+version = "0.1.0"
+description = "Fast, simple microservice framework."
+authors = ["larmoreg <larmoreg@gmail.com>"]
+license = "MIT License"
+
+[tool.poetry.dependencies]
+python = "^3.6"
+pulsar-client = "^2.7.0"
+pydantic = "^1.7.3"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.2"
+pytest-asyncio = "^0.14.0"
+pytest-cov = "^2.11.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

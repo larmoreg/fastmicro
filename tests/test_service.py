@@ -1,6 +1,7 @@
 import pytest
 
 from fastmicro.entrypoint import Entrypoint
+from fastmicro.messaging import Header
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -15,8 +16,12 @@ async def test_service_process(
     greet: Entrypoint[User, Greeting],
 ) -> None:
     input_message = User(name="Greg")
+    input_header = Header(message=input_message)
 
-    await user_topic.send(input_message)
-    async with greeting_topic.receive(service.name) as output_message:
+    await user_topic.send(input_header)
+    async with greeting_topic.receive(service.name) as output_header:
+        assert output_header.parent == input_header.uuid
+        output_message = output_header.message
+        assert output_message
         assert output_message.name == "Greg"
         assert output_message.greeting == "Hello, Greg!"

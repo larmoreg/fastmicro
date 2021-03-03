@@ -1,26 +1,35 @@
 import abc
 import asyncio
 import os
-from typing import cast, Dict, Generic, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
+from uuid import UUID, uuid4
 
 import pulsar
+import pydantic
+
+
+class Header(pydantic.BaseModel):
+    uuid: UUID = pydantic.Field(default_factory=uuid4)
+    parent: Optional[UUID]
+    data: Optional[bytes]
+    message: Optional[Any]
 
 
 class Messaging(abc.ABC):
     @abc.abstractmethod
-    async def receive(self, topic: str, name: str) -> bytes:
+    async def receive(self, topic: str, name: str) -> Header:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def ack(self, topic: str, name: str, message: bytes) -> None:
+    async def ack(self, topic: str, name: str, header: Header) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def nack(self, topic: str, name: str, message: bytes) -> None:
+    async def nack(self, topic: str, name: str, header: Header) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def send(self, topic: str, message: bytes) -> None:
+    async def send(self, topic: str, header: Header) -> None:
         raise NotImplementedError
 
 
@@ -39,18 +48,18 @@ class Queue(Generic[T]):
 
         return self.items[index]
 
-    async def put(self, message: T) -> None:
-        await self.queue.put(message)
+    async def put(self, item: T) -> None:
+        await self.queue.put(item)
 
 
 class MemoryMessaging(Messaging):
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         self.loop = loop
         self.lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
-        self.queues: Dict[str, Queue[bytes]] = dict()
+        self.queues: Dict[str, Queue[Header]] = dict()
         self.offsets: Dict[str, Dict[str, int]] = dict()
 
-    async def _get_topic_offset(self, topic: str) -> Tuple[Queue[bytes], Dict[str, int]]:
+    async def _get_topic_offset(self, topic: str) -> Tuple[Queue[Header], Dict[str, int]]:
         async with self.lock:
             if topic not in self.queues:
                 self.queues[topic] = Queue(self.loop)
@@ -69,24 +78,24 @@ class MemoryMessaging(Messaging):
         async with self.lock:
             offset[name] += 1
 
-    async def receive(self, topic: str, name: str) -> bytes:
+    async def receive(self, topic: str, name: str) -> Header:
         queue, offset = await self._get_topic_offset(topic)
         index = await self._get_offset(offset, name)
 
         return await queue.get(index)
 
-    async def ack(self, topic: str, name: str, message: bytes) -> None:
+    async def ack(self, topic: str, name: str, header: Header) -> None:
         queue, offset = await self._get_topic_offset(topic)
         await self._increment_offset(offset, name)
 
-    async def nack(self, topic: str, name: str, message: bytes) -> None:
+    async def nack(self, topic: str, name: str, header: Header) -> None:
         pass
 
-    async def send(self, topic: str, message: bytes) -> None:
+    async def send(self, topic: str, header: Header) -> None:
         queue, _ = await self._get_topic_offset(topic)
 
         queue = self.queues[topic]
-        await queue.put(message)
+        await queue.put(header)
 
 
 class PulsarMessaging(Messaging):  # pragma: no cover
@@ -107,19 +116,19 @@ class PulsarMessaging(Messaging):  # pragma: no cover
             self.producers[topic] = self.client.create_producer(topic)
         return self.producers[topic]
 
-    async def receive(self, topic: str, name: str) -> bytes:
+    async def receive(self, topic: str, name: str) -> Header:
         consumer = await self._get_consumer(topic, name)
         message = consumer.receive()
-        return cast(bytes, message.data())
+        return Header(uuid=message.message_id(), data=message.data())
 
-    async def ack(self, topic: str, name: str, message: bytes) -> None:
+    async def ack(self, topic: str, name: str, header: Header) -> None:
         consumer = await self._get_consumer(topic, name)
-        consumer.acknowledge(message)
+        consumer.acknowledge(header.uuid)
 
-    async def nack(self, topic: str, name: str, message: bytes) -> None:
+    async def nack(self, topic: str, name: str, header: Header) -> None:
         consumer = await self._get_consumer(topic, name)
-        consumer.negative_acknowledge(message)
+        consumer.negative_acknowledge(header.uuid)
 
-    async def send(self, topic: str, message: bytes) -> None:
+    async def send(self, topic: str, header: Header) -> None:
         producer = await self._get_producer(topic)
-        producer.send(message)
+        producer.send(header.data)

@@ -3,7 +3,7 @@ from typing import AsyncIterator, Generic, Type, TypeVar
 
 import pydantic
 
-from .messaging import Messaging
+from .messaging import Header, Messaging
 from .registrar import registrar
 
 T = TypeVar("T", bound=pydantic.BaseModel)
@@ -24,15 +24,17 @@ class Topic(Generic[T]):
         return self.schema(**message)
 
     @asynccontextmanager
-    async def receive(self, name: str) -> AsyncIterator[T]:
-        serialized = await self.messaging.receive(self.name, name)
+    async def receive(self, name: str) -> AsyncIterator[Header]:
+        header = await self.messaging.receive(self.name, name)
         try:
-            message = await self.deserialize(serialized)
-            yield message
-            await self.messaging.ack(self.name, name, serialized)
+            assert header.data
+            header.message = await self.deserialize(header.data)
+            yield header
+            await self.messaging.ack(self.name, name, header)
         except Exception:
-            await self.messaging.nack(self.name, name, serialized)
+            await self.messaging.nack(self.name, name, header)
 
-    async def send(self, message: T) -> None:
-        serialized = await self.serialize(message)
-        await self.messaging.send(self.name, serialized)
+    async def send(self, header: Header) -> None:
+        assert header.message
+        header.data = await self.serialize(header.message)
+        await self.messaging.send(self.name, header)

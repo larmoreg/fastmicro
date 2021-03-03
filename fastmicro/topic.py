@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Generic, Type, TypeVar
+from typing import Any, AsyncIterator, Generic, Type, TypeVar, Union
 
 import pydantic
 
@@ -34,7 +34,12 @@ class Topic(Generic[T]):
         except Exception:
             await self.messaging.nack(self.name, name, header)
 
-    async def send(self, header: Header) -> None:
+    async def send(self, message: Union[Header, Any]) -> Header:
+        if isinstance(message, Header):
+            header = message
+        else:
+            header = Header(message=message)
         assert header.message
         header.data = await self.serialize(header.message)
         await self.messaging.send(self.name, header)
+        return header

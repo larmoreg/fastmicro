@@ -1,45 +1,41 @@
 import asyncio
-import logging
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict, List
 
 from .entrypoint import AT, BT, Entrypoint
 from .messaging import Messaging
-from .topic import T, Topic
-
-logger = logging.getLogger(__name__)
+from .topic import Topic
 
 
 class Service:
-    def __init__(self, name: str, messaging: Messaging) -> None:
+    def __init__(
+        self,
+        name: str,
+        messaging: Messaging,
+        loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
+    ) -> None:
         self.name = name
         self.messaging = messaging
+        self.loop = loop
         self.entrypoints: Dict[str, Any] = dict()
-        self.logger = logging.getLogger(__name__)
+        self.tasks: List[asyncio.Task[None]] = list()
 
     def entrypoint(
-        self, topic: Topic[AT], reply_topic: Topic[BT], mock: bool = False
+        self, topic: Topic[AT], reply_topic: Topic[BT]
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
             if topic.name in self.entrypoints:
                 raise ValueError(f"Entrypoint already registered for topic {topic.name}")
 
-            entrypoint = Entrypoint(
-                self, callback, self.name, self.messaging, topic, reply_topic, mock=mock
-            )
+            entrypoint = Entrypoint(self.name, callback, topic, reply_topic)
             self.entrypoints[topic.name] = entrypoint
+
+            task = self.loop.create_task(self.process(entrypoint), name=self.name)
+            self.tasks.append(task)
             return entrypoint
 
         return _entrypoint
 
-    async def receive(self, topic: Topic[T]) -> T:
-        serialized = await self.messaging.receive(topic.name, self.name)
-        return await topic.deserialize(serialized)
-
-    async def send(self, topic: Topic[T], message: T) -> None:
-        serialized = await topic.serialize(message)
-        await self.messaging.send(topic.name, serialized)
-
-    async def process(self) -> None:
-        # TODO: start a separate task for each entrypoint
-        tasks = [entrypoint.process() for entrypoint in self.entrypoints.values()]
-        await asyncio.gather(*tasks)
+    @staticmethod
+    async def process(entrypoint: Entrypoint[AT, BT]) -> None:
+        while True:
+            await entrypoint.process()

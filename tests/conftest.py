@@ -20,29 +20,29 @@ class Greeting(pydantic.BaseModel):
 
 @pytest.fixture
 def messaging(event_loop: asyncio.AbstractEventLoop) -> Messaging:
-    return MemoryMessaging()
+    return MemoryMessaging(loop=event_loop)
 
 
 @pytest.fixture
-def service(messaging: Messaging) -> Service:
-    return Service("test", messaging)
+def service(event_loop: asyncio.AbstractEventLoop, messaging: Messaging) -> Service:
+    return Service("test", messaging, loop=event_loop)
 
 
 @pytest.fixture
-def user_topic() -> Topic[User]:
-    return Topic("user", User)
+def user_topic(messaging: Messaging) -> Topic[User]:
+    return Topic(messaging, "user", User)
 
 
 @pytest.fixture
-def greeting_topic() -> Topic[Greeting]:
-    return Topic("greeting", Greeting)
+def greeting_topic(messaging: Messaging) -> Topic[Greeting]:
+    return Topic(messaging, "greeting", Greeting)
 
 
 @pytest.fixture
 def greet(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> Entrypoint[User, Greeting]:
-    @service.entrypoint(user_topic, reply_topic=greeting_topic, mock=True)
+    @service.entrypoint(user_topic, greeting_topic)
     async def _greet(user: User) -> Greeting:
         await asyncio.sleep(user.delay)
         return Greeting(name=user.name, greeting=f"Hello, {user.name}!")
@@ -54,7 +54,7 @@ def greet(
 def fail(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> Entrypoint[User, Greeting]:
-    @service.entrypoint(user_topic, reply_topic=greeting_topic, mock=True)
+    @service.entrypoint(user_topic, greeting_topic)
     async def _greet(user: User) -> Greeting:
         raise RuntimeError("Test error")
 

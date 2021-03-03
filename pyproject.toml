@@ -6,7 +6,7 @@ authors = ["larmoreg <larmoreg@gmail.com>"]
 license = "MIT License"
 
 [tool.poetry.dependencies]
-python = "^3.6"
+python = "^3.8"
 pulsar-client = "^2.7.0"
 pydantic = "^1.7.3"
 

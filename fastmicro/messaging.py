@@ -1,7 +1,7 @@
 import abc
 import asyncio
 import os
-from typing import cast, Dict, Generic, List, Tuple, TypeVar
+from typing import cast, Dict, Generic, List, Optional, Tuple, TypeVar
 
 import pulsar
 
@@ -12,11 +12,11 @@ class Messaging(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def ack(self, topic: str, name: str) -> None:
+    async def ack(self, topic: str, name: str, message: bytes) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def nack(self, topic: str, name: str) -> None:
+    async def nack(self, topic: str, name: str, message: bytes) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -28,8 +28,8 @@ T = TypeVar("T")
 
 
 class Queue(Generic[T]):
-    def __init__(self) -> None:
-        self.queue: asyncio.Queue[T] = asyncio.Queue()
+    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+        self.queue: asyncio.Queue[T] = asyncio.Queue(loop=loop)
         self.items: List[T] = list()
 
     async def get(self, index: int) -> T:
@@ -44,15 +44,16 @@ class Queue(Generic[T]):
 
 
 class MemoryMessaging(Messaging):
-    def __init__(self) -> None:
-        self.lock: asyncio.Lock = asyncio.Lock()
+    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+        self.loop = loop
+        self.lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
         self.queues: Dict[str, Queue[bytes]] = dict()
         self.offsets: Dict[str, Dict[str, int]] = dict()
 
     async def _get_topic_offset(self, topic: str) -> Tuple[Queue[bytes], Dict[str, int]]:
         async with self.lock:
             if topic not in self.queues:
-                self.queues[topic] = Queue()
+                self.queues[topic] = Queue(self.loop)
                 self.offsets[topic] = dict()
 
         return self.queues[topic], self.offsets[topic]
@@ -74,11 +75,11 @@ class MemoryMessaging(Messaging):
 
         return await queue.get(index)
 
-    async def ack(self, topic: str, name: str) -> None:
+    async def ack(self, topic: str, name: str, message: bytes) -> None:
         queue, offset = await self._get_topic_offset(topic)
         await self._increment_offset(offset, name)
 
-    async def nack(self, topic: str, name: str) -> None:
+    async def nack(self, topic: str, name: str, message: bytes) -> None:
         pass
 
     async def send(self, topic: str, message: bytes) -> None:
@@ -108,16 +109,16 @@ class PulsarMessaging(Messaging):  # pragma: no cover
 
     async def receive(self, topic: str, name: str) -> bytes:
         consumer = await self._get_consumer(topic, name)
-        self.message = consumer.receive()
-        return cast(bytes, self.message.data())
+        message = consumer.receive()
+        return cast(bytes, message.data())
 
-    async def ack(self, topic: str, name: str) -> None:
+    async def ack(self, topic: str, name: str, message: bytes) -> None:
         consumer = await self._get_consumer(topic, name)
-        consumer.acknowledge(self.message)
+        consumer.acknowledge(message)
 
-    async def nack(self, topic: str, name: str) -> None:
+    async def nack(self, topic: str, name: str, message: bytes) -> None:
         consumer = await self._get_consumer(topic, name)
-        consumer.negative_acknowledge(self.message)
+        consumer.negative_acknowledge(message)
 
     async def send(self, topic: str, message: bytes) -> None:
         producer = await self._get_producer(topic)

@@ -1,6 +1,7 @@
 import abc
 from typing import Any, cast, Dict
-from uuid import UUID
+
+# from uuid import UUID
 
 import msgpack
 
@@ -16,6 +17,7 @@ class Serializer(abc.ABC):
 
 
 class MsgpackSerializer(Serializer):
+    """
     @staticmethod
     def decode(obj: Any) -> Any:
         if b"__type__" in obj:
@@ -31,9 +33,12 @@ class MsgpackSerializer(Serializer):
                 b"__value__": str(obj).encode(),
             }
         return obj
+    """
 
     async def serialize(self, data: Dict[Any, Any]) -> bytes:
-        return cast(bytes, msgpack.packb(data, default=self.encode))
+        # return cast(bytes, msgpack.packb(data, default=self.encode))
+        return cast(bytes, msgpack.packb(data))
 
     async def deserialize(self, data: bytes) -> Dict[Any, Any]:
-        return cast(Dict[Any, Any], msgpack.unpackb(data, object_hook=self.decode))
+        # return cast(Dict[Any, Any], msgpack.unpackb(data, object_hook=self.decode))
+        return cast(Dict[Any, Any], msgpack.unpackb(data))

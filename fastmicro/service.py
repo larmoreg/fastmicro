@@ -2,7 +2,6 @@ import asyncio
 from typing import Any, Awaitable, Callable, Dict, List
 
 from .entrypoint import AT, BT, Entrypoint
-from .messaging import Messaging
 from .topic import Topic
 
 
@@ -10,11 +9,9 @@ class Service:
     def __init__(
         self,
         name: str,
-        messaging: Messaging,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
         self.name = name
-        self.messaging = messaging
         self.loop = loop
         self.entrypoints: Dict[str, Any] = dict()
         self.tasks: List[asyncio.Task[None]] = list()
@@ -28,12 +25,22 @@ class Service:
 
             entrypoint = Entrypoint(self.name, callback, topic, reply_topic)
             self.entrypoints[topic.name] = entrypoint
-
-            task = self.loop.create_task(self.process(entrypoint), name=self.name)
-            self.tasks.append(task)
             return entrypoint
 
         return _entrypoint
+
+    def run(self) -> None:
+        for entrypoint in self.entrypoints.values():
+            task = self.loop.create_task(self.process(entrypoint), name=self.name)
+            self.tasks.append(task)
+
+        self.loop.run_forever()
+
+    def stop(self) -> None:
+        for task in self.tasks:
+            task.cancel()
+
+        self.loop.close()
 
     @staticmethod
     async def process(entrypoint: Entrypoint[AT, BT]) -> None:

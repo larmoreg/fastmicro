@@ -1,8 +1,9 @@
 import abc
 import asyncio
+import atexit
 import os
 from typing import Any, Dict, Generic, List, Optional, Set, Tuple, TypeVar
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pulsar
 import pydantic
@@ -11,8 +12,8 @@ from .registrar import registrar
 
 
 class Header(pydantic.BaseModel):
-    uuid: Optional[UUID]
-    parent: Optional[UUID]
+    id: Optional[bytes]
+    parent: Optional[bytes]
     data: Optional[bytes]
     message: Optional[Any]
 
@@ -36,11 +37,11 @@ class Messaging(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def ack(self, topic: str, name: str, uuid: UUID) -> None:
+    async def ack(self, topic: str, name: str, id: bytes) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def nack(self, topic: str, name: str, uuid: UUID) -> None:
+    async def nack(self, topic: str, name: str, id: bytes) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -54,36 +55,36 @@ T = TypeVar("T")
 class Queue(Generic[T]):
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         self.lock: asyncio.Lock = asyncio.Lock(loop=loop)
-        self.queue: asyncio.Queue[Tuple[UUID, T]] = asyncio.Queue(loop=loop)
-        self.items: Dict[UUID, T] = dict()
-        self.pending: Set[UUID] = set()
-        self.nacked: List[UUID] = list()
+        self.queue: asyncio.Queue[Tuple[bytes, T]] = asyncio.Queue(loop=loop)
+        self.items: Dict[bytes, T] = dict()
+        self.pending: Set[bytes] = set()
+        self.nacked: List[bytes] = list()
 
-    async def get(self) -> Tuple[UUID, T]:
+    async def get(self) -> Tuple[bytes, T]:
         async with self.lock:
             if self.nacked:
-                uuid = self.nacked.pop()
+                id = self.nacked.pop()
             else:
-                uuid, item = await self.queue.get()
-                self.items[uuid] = item
-            self.pending.add(uuid)
-        return uuid, self.items[uuid]
+                id, item = await self.queue.get()
+                self.items[id] = item
+            self.pending.add(id)
+        return id, self.items[id]
 
-    async def put(self, item: T) -> UUID:
-        uuid = uuid4()
-        await self.queue.put((uuid, item))
-        return uuid
+    async def put(self, item: T) -> bytes:
+        id = str(uuid4()).encode()
+        await self.queue.put((id, item))
+        return id
 
-    async def ack(self, uuid: UUID) -> None:
+    async def ack(self, id: bytes) -> None:
         async with self.lock:
-            if uuid in self.pending:
-                self.pending.remove(uuid)
+            if id in self.pending:
+                self.pending.remove(id)
 
-    async def nack(self, uuid: UUID) -> None:
+    async def nack(self, id: bytes) -> None:
         async with self.lock:
-            if uuid in self.pending:
-                self.pending.remove(uuid)
-                self.nacked.insert(0, uuid)
+            if id in self.pending:
+                self.pending.remove(id)
+                self.nacked.insert(0, id)
 
 
 class MemoryMessaging(Messaging):
@@ -105,23 +106,23 @@ class MemoryMessaging(Messaging):
 
     async def receive(self, topic: str, name: str) -> Header:
         queue = await self._get_queue(topic)
-        uuid, serialized = await queue.get()
+        id, serialized = await queue.get()
         header = await self.deserialize(serialized)
-        header.uuid = uuid
+        header.id = id
         return header
 
-    async def ack(self, topic: str, name: str, uuid: UUID) -> None:
+    async def ack(self, topic: str, name: str, id: bytes) -> None:
         queue = await self._get_queue(topic)
-        await queue.ack(uuid)
+        await queue.ack(id)
 
-    async def nack(self, topic: str, name: str, uuid: UUID) -> None:
+    async def nack(self, topic: str, name: str, id: bytes) -> None:
         queue = await self._get_queue(topic)
-        await queue.nack(uuid)
+        await queue.nack(id)
 
     async def send(self, topic: str, header: Header) -> None:
         queue = await self._get_queue(topic)
         serialized = await self.serialize(header)
-        header.uuid = await queue.put(serialized)
+        header.id = await queue.put(serialized)
 
 
 # TODO: test this
@@ -134,6 +135,10 @@ class PulsarMessaging(Messaging):  # pragma: no cover
         self.client = pulsar.Client(broker_url)
         self.consumers: Dict[Tuple[str, str], pulsar.Consumer] = dict()
         self.producers: Dict[str, pulsar.Producer] = dict()
+        atexit.register(self.cleanup)
+
+    def cleanup(self) -> None:
+        self.client.close()
 
     async def _get_consumer(self, topic: str, name: str) -> pulsar.Consumer:
         key = topic, name
@@ -150,18 +155,21 @@ class PulsarMessaging(Messaging):  # pragma: no cover
         consumer = await self._get_consumer(topic, name)
         message = consumer.receive()
         header = await self.deserialize(message.data())
-        header.uuid = message.message_id()
+        header.id = message.message_id().serialize()
         return header
 
-    async def ack(self, topic: str, name: str, uuid: UUID) -> None:
+    async def ack(self, topic: str, name: str, id: bytes) -> None:
+        temp = pulsar.MessageId.deserialize(id)
         consumer = await self._get_consumer(topic, name)
-        consumer.acknowledge(uuid)
+        consumer.acknowledge(temp)
 
-    async def nack(self, topic: str, name: str, uuid: UUID) -> None:
+    async def nack(self, topic: str, name: str, id: bytes) -> None:
+        temp = pulsar.MessageId.deserialize(id)
         consumer = await self._get_consumer(topic, name)
-        consumer.negative_acknowledge(uuid)
+        consumer.negative_acknowledge(temp)
 
     async def send(self, topic: str, header: Header) -> None:
         producer = await self._get_producer(topic)
         serialized = await self.serialize(header)
-        header.uuid = producer.send(serialized)
+        producer.send(serialized)
+        # FIXME: need to set header.id

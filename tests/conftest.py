@@ -25,7 +25,7 @@ def messaging(event_loop: asyncio.AbstractEventLoop) -> Messaging:
 
 @pytest.fixture
 def service(event_loop: asyncio.AbstractEventLoop, messaging: Messaging) -> Service:
-    return Service("test", messaging, loop=event_loop)
+    return Service("test", loop=event_loop)
 
 
 @pytest.fixture

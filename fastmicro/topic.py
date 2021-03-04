@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
+import logging
 from typing import Any, AsyncIterator, Generic, Type, TypeVar, Union
 
 import pydantic
 
 from .messaging import Header, Messaging
 from .registrar import registrar
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=pydantic.BaseModel)
 
@@ -31,16 +34,18 @@ class Topic(Generic[T]):
 
     @asynccontextmanager
     async def receive(self, name: str) -> AsyncIterator[Header]:
-        header = await self.messaging.receive(self.name, name)
         try:
+            header = await self.messaging.receive(self.name, name)
             assert header.data
             header.message = await self.deserialize(header.data)
             yield header
-            assert header.uuid
-            await self.messaging.ack(self.name, name, header.uuid)
+            assert header.id
+            await self.messaging.ack(self.name, name, header.id)
         except Exception:
-            assert header.uuid
-            await self.messaging.nack(self.name, name, header.uuid)
+            logger.exception("Processing failed; nacking message")
+            assert header.id
+            # await self.messaging.nack(self.name, name, header.id)
+            await self.messaging.ack(self.name, name, header.id)
 
     async def send(self, message: Union[Header, Any]) -> Header:
         if isinstance(message, Header):

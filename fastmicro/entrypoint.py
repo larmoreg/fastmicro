@@ -1,12 +1,9 @@
-import logging
 from typing import Awaitable, Callable, cast, Generic, TypeVar
 
 import pydantic
 
 from .messaging import Header
 from .topic import Topic
-
-logger = logging.getLogger(__name__)
 
 AT = TypeVar("AT", bound=pydantic.BaseModel)
 BT = TypeVar("BT", bound=pydantic.BaseModel)
@@ -26,21 +23,17 @@ class Entrypoint(Generic[AT, BT]):
         self.reply_topic = reply_topic
 
     async def process(self) -> None:
-        try:
-            # TODO: add batch processing?
-            async with self.topic.receive(self.name) as input_header:
-                input_message = input_header.message
-                assert input_message
-                output_message = await self.callback(input_message)
-                output_header = Header(parent=input_header.uuid, message=output_message)
-                await self.reply_topic.send(output_header)
-        except Exception as e:
-            logger.exception("Failed to process message; nacking message")
-            raise e
+        # TODO: add batch processing?
+        async with self.topic.receive(self.name) as input_header:
+            input_message = input_header.message
+            assert input_message
+            output_message = await self.callback(input_message)
+            output_header = Header(parent=input_header.id, message=output_message)
+            await self.reply_topic.send(output_header)
 
     @staticmethod
     def _is_reply(input_header: Header, output_header: Header) -> bool:
-        return output_header.parent == input_header.uuid
+        return output_header.parent == input_header.id
 
     async def call(self, input_message: AT) -> BT:
         input_header = await self.topic.send(input_message)

@@ -1,6 +1,8 @@
 import abc
-import json
 from typing import Any, cast, Dict
+from uuid import UUID
+
+import msgpack
 
 
 class Serializer(abc.ABC):
@@ -13,9 +15,25 @@ class Serializer(abc.ABC):
         raise NotImplementedError
 
 
-class JsonSerializer(Serializer):
+class MsgpackSerializer(Serializer):
+    @staticmethod
+    def decode(obj: Any) -> Any:
+        if b"__type__" in obj:
+            if obj[b"__type__"] == b"uuid.UUID":
+                obj = UUID(obj[b"__value__"].decode())
+        return obj
+
+    @staticmethod
+    def encode(obj: Any) -> Any:
+        if isinstance(obj, UUID):
+            obj = {
+                b"__type__": b"uuid.UUID",
+                b"__value__": str(obj).encode(),
+            }
+        return obj
+
     async def serialize(self, data: Dict[Any, Any]) -> bytes:
-        return json.dumps(data).encode()
+        return cast(bytes, msgpack.packb(data, default=self.encode))
 
     async def deserialize(self, data: bytes) -> Dict[Any, Any]:
-        return cast(Dict[Any, Any], json.loads(data.decode()))
+        return cast(Dict[Any, Any], msgpack.unpackb(data, object_hook=self.decode))

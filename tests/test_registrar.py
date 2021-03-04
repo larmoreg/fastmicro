@@ -1,9 +1,9 @@
 import pytest
 
-from fastmicro.registrar import registrar, json_serializer
+from fastmicro.registrar import registrar, msgpack_serializer
 
 
 @pytest.mark.asyncio()
 async def test_reregister() -> None:
-    registrar.unregister("json")
-    registrar.register("json", json_serializer)
+    registrar.unregister("msgpack")
+    registrar.register("msgpack", msgpack_serializer)

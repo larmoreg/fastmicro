@@ -1,6 +1,6 @@
 from typing import Dict
 
-from .serializer import Serializer, JsonSerializer
+from .serializer import Serializer, MsgpackSerializer
 
 
 class Registrar:
@@ -24,5 +24,5 @@ class Registrar:
 
 
 registrar = Registrar()
-json_serializer = JsonSerializer()
-registrar.register("json", json_serializer)
+msgpack_serializer = MsgpackSerializer()
+registrar.register("msgpack", msgpack_serializer)

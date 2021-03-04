@@ -6,14 +6,17 @@ authors = ["larmoreg <larmoreg@gmail.com>"]
 license = "MIT License"
 
 [tool.poetry.dependencies]
-python = "^3.8"
+msgpack = "^1.0.2"
+mypy = "^0.812"
 pulsar-client = "^2.7.0"
 pydantic = "^1.7.3"
+python = "^3.8"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.2"
 pytest-asyncio = "^0.14.0"
 pytest-cov = "^2.11.1"
+pytest-stub = "^1.1.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

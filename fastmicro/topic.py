@@ -10,7 +10,13 @@ T = TypeVar("T", bound=pydantic.BaseModel)
 
 
 class Topic(Generic[T]):
-    def __init__(self, messaging: Messaging, name: str, schema: Type[T], serializer: str = "json"):
+    def __init__(
+        self,
+        messaging: Messaging,
+        name: str,
+        schema: Type[T],
+        serializer: str = "msgpack",
+    ):
         self.messaging = messaging
         self.name = name
         self.schema = schema

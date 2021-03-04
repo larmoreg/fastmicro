@@ -1,31 +1,46 @@
 import abc
 import asyncio
 import os
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Set, Tuple, TypeVar
 from uuid import UUID, uuid4
 
 import pulsar
 import pydantic
 
+from .registrar import registrar
+
 
 class Header(pydantic.BaseModel):
-    uuid: UUID = pydantic.Field(default_factory=uuid4)
+    uuid: Optional[UUID]
     parent: Optional[UUID]
     data: Optional[bytes]
     message: Optional[Any]
 
 
 class Messaging(abc.ABC):
+    def __init__(
+        self,
+        serializer: str = "msgpack",
+    ) -> None:
+        self.serializer = registrar.get(serializer)
+
+    async def serialize(self, header: Header) -> bytes:
+        return await self.serializer.serialize(header.dict(exclude={"uuid", "message"}))
+
+    async def deserialize(self, serialized: bytes) -> Header:
+        header = await self.serializer.deserialize(serialized)
+        return Header(**header)
+
     @abc.abstractmethod
     async def receive(self, topic: str, name: str) -> Header:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def ack(self, topic: str, name: str, header: Header) -> None:
+    async def ack(self, topic: str, name: str, uuid: UUID) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def nack(self, topic: str, name: str, header: Header) -> None:
+    async def nack(self, topic: str, name: str, uuid: UUID) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -38,68 +53,83 @@ T = TypeVar("T")
 
 class Queue(Generic[T]):
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
-        self.queue: asyncio.Queue[T] = asyncio.Queue(loop=loop)
-        self.items: List[T] = list()
+        self.lock: asyncio.Lock = asyncio.Lock(loop=loop)
+        self.queue: asyncio.Queue[Tuple[UUID, T]] = asyncio.Queue(loop=loop)
+        self.items: Dict[UUID, T] = dict()
+        self.pending: Set[UUID] = set()
+        self.nacked: List[UUID] = list()
 
-    async def get(self, index: int) -> T:
-        while index >= len(self.items):
-            item = await self.queue.get()
-            self.items.append(item)
+    async def get(self) -> Tuple[UUID, T]:
+        async with self.lock:
+            if self.nacked:
+                uuid = self.nacked.pop()
+            else:
+                uuid, item = await self.queue.get()
+                self.items[uuid] = item
+            self.pending.add(uuid)
+        return uuid, self.items[uuid]
 
-        return self.items[index]
+    async def put(self, item: T) -> UUID:
+        uuid = uuid4()
+        await self.queue.put((uuid, item))
+        return uuid
 
-    async def put(self, item: T) -> None:
-        await self.queue.put(item)
+    async def ack(self, uuid: UUID) -> None:
+        async with self.lock:
+            if uuid in self.pending:
+                self.pending.remove(uuid)
+
+    async def nack(self, uuid: UUID) -> None:
+        async with self.lock:
+            if uuid in self.pending:
+                self.pending.remove(uuid)
+                self.nacked.insert(0, uuid)
 
 
 class MemoryMessaging(Messaging):
-    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+    def __init__(
+        self,
+        serializer: str = "msgpack",
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+    ) -> None:
+        super().__init__(serializer)
         self.loop = loop
         self.lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
-        self.queues: Dict[str, Queue[Header]] = dict()
-        self.offsets: Dict[str, Dict[str, int]] = dict()
+        self.queues: Dict[str, Queue[bytes]] = dict()
 
-    async def _get_topic_offset(self, topic: str) -> Tuple[Queue[Header], Dict[str, int]]:
+    async def _get_queue(self, topic: str) -> Queue[bytes]:
         async with self.lock:
             if topic not in self.queues:
                 self.queues[topic] = Queue(self.loop)
-                self.offsets[topic] = dict()
-
-        return self.queues[topic], self.offsets[topic]
-
-    async def _get_offset(self, offset: Dict[str, int], name: str) -> int:
-        async with self.lock:
-            if name not in offset:
-                offset[name] = 0
-
-        return offset[name]
-
-    async def _increment_offset(self, offset: Dict[str, int], name: str) -> None:
-        async with self.lock:
-            offset[name] += 1
+            return self.queues[topic]
 
     async def receive(self, topic: str, name: str) -> Header:
-        queue, offset = await self._get_topic_offset(topic)
-        index = await self._get_offset(offset, name)
+        queue = await self._get_queue(topic)
+        uuid, serialized = await queue.get()
+        header = await self.deserialize(serialized)
+        header.uuid = uuid
+        return header
 
-        return await queue.get(index)
+    async def ack(self, topic: str, name: str, uuid: UUID) -> None:
+        queue = await self._get_queue(topic)
+        await queue.ack(uuid)
 
-    async def ack(self, topic: str, name: str, header: Header) -> None:
-        queue, offset = await self._get_topic_offset(topic)
-        await self._increment_offset(offset, name)
-
-    async def nack(self, topic: str, name: str, header: Header) -> None:
-        pass
+    async def nack(self, topic: str, name: str, uuid: UUID) -> None:
+        queue = await self._get_queue(topic)
+        await queue.nack(uuid)
 
     async def send(self, topic: str, header: Header) -> None:
-        queue, _ = await self._get_topic_offset(topic)
+        queue = await self._get_queue(topic)
+        serialized = await self.serialize(header)
+        header.uuid = await queue.put(serialized)
 
-        queue = self.queues[topic]
-        await queue.put(header)
 
-
+# TODO: test this
 class PulsarMessaging(Messaging):  # pragma: no cover
-    def __init__(self, broker_url: str = "pulsar://localhost:6650") -> None:
+    def __init__(
+        self, serializer: str = "msgpack", broker_url: str = "pulsar://localhost:6650"
+    ) -> None:
+        super().__init__(serializer)
         broker_url = os.getenv("BROKER_URL", broker_url)
         self.client = pulsar.Client(broker_url)
         self.consumers: Dict[Tuple[str, str], pulsar.Consumer] = dict()
@@ -119,16 +149,19 @@ class PulsarMessaging(Messaging):  # pragma: no cover
     async def receive(self, topic: str, name: str) -> Header:
         consumer = await self._get_consumer(topic, name)
         message = consumer.receive()
-        return Header(uuid=message.message_id(), data=message.data())
+        header = await self.deserialize(message.data())
+        header.uuid = message.message_id()
+        return header
 
-    async def ack(self, topic: str, name: str, header: Header) -> None:
+    async def ack(self, topic: str, name: str, uuid: UUID) -> None:
         consumer = await self._get_consumer(topic, name)
-        consumer.acknowledge(header.uuid)
+        consumer.acknowledge(uuid)
 
-    async def nack(self, topic: str, name: str, header: Header) -> None:
+    async def nack(self, topic: str, name: str, uuid: UUID) -> None:
         consumer = await self._get_consumer(topic, name)
-        consumer.negative_acknowledge(header.uuid)
+        consumer.negative_acknowledge(uuid)
 
     async def send(self, topic: str, header: Header) -> None:
         producer = await self._get_producer(topic)
-        producer.send(header.data)
+        serialized = await self.serialize(header)
+        header.uuid = producer.send(serialized)

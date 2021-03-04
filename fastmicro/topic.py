@@ -36,9 +36,11 @@ class Topic(Generic[T]):
             assert header.data
             header.message = await self.deserialize(header.data)
             yield header
-            await self.messaging.ack(self.name, name, header)
+            assert header.uuid
+            await self.messaging.ack(self.name, name, header.uuid)
         except Exception:
-            await self.messaging.nack(self.name, name, header)
+            assert header.uuid
+            await self.messaging.nack(self.name, name, header.uuid)
 
     async def send(self, message: Union[Header, Any]) -> Header:
         if isinstance(message, Header):

@@ -43,8 +43,7 @@ class Entrypoint(Generic[AT, BT]):
         return output_header.parent == input_header.uuid
 
     async def call(self, input_message: AT) -> BT:
-        input_header = Header(message=input_message)
-        await self.topic.send(input_header)
+        input_header = await self.topic.send(input_message)
         while True:
             async with self.reply_topic.receive(self.name) as output_header:
                 if self._is_reply(input_header, output_header):

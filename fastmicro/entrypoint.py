@@ -28,12 +28,12 @@ class Entrypoint(Generic[AT, BT]):
             input_message = input_header.message
             assert input_message
             output_message = await self.callback(input_message)
-            output_header = Header(parent=input_header.id, message=output_message)
+            output_header = Header(parent=input_header.uuid, message=output_message)
             await self.reply_topic.send(output_header)
 
     @staticmethod
     def _is_reply(input_header: Header, output_header: Header) -> bool:
-        return output_header.parent == input_header.id
+        return output_header.parent == input_header.uuid
 
     async def call(self, input_message: AT) -> BT:
         input_header = await self.topic.send(input_message)

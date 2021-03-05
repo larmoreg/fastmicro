@@ -48,14 +48,3 @@ def greet(
         return Greeting(name=user.name, greeting=f"Hello, {user.name}!")
 
     return _greet
-
-
-@pytest.fixture
-def fail(
-    service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
-) -> Entrypoint[User, Greeting]:
-    @service.entrypoint(user_topic, greeting_topic)
-    async def _greet(user: User) -> Greeting:
-        raise RuntimeError("Test error")
-
-    return _greet

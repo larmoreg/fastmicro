@@ -3,7 +3,7 @@ import asyncio
 import atexit
 import os
 from typing import Any, Dict, Generic, List, Optional, Set, Tuple, TypeVar
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pulsar
 import pydantic
@@ -13,8 +13,10 @@ from .registrar import registrar
 
 class Header(pydantic.BaseModel):
     id: Optional[bytes]
-    parent: Optional[bytes]
     data: Optional[bytes]
+
+    uuid: Optional[UUID]
+    parent: Optional[UUID]
     message: Optional[Any]
 
 
@@ -56,6 +58,7 @@ class Queue(Generic[T]):
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         self.lock: asyncio.Lock = asyncio.Lock(loop=loop)
         self.queue: asyncio.Queue[Tuple[bytes, T]] = asyncio.Queue(loop=loop)
+        self.index: int = 0
         self.items: Dict[bytes, T] = dict()
         self.pending: Set[bytes] = set()
         self.nacked: List[bytes] = list()
@@ -71,7 +74,8 @@ class Queue(Generic[T]):
         return id, self.items[id]
 
     async def put(self, item: T) -> bytes:
-        id = str(uuid4()).encode()
+        id = str(self.index).encode()
+        self.index += 1
         await self.queue.put((id, item))
         return id
 
@@ -123,6 +127,7 @@ class MemoryMessaging(Messaging):
         queue = await self._get_queue(topic)
         serialized = await self.serialize(header)
         header.id = await queue.put(serialized)
+        header.uuid = uuid4()
 
 
 # TODO: test this

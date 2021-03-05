@@ -19,7 +19,7 @@ async def test_service_process(
     input_header = await user_topic.send(input_message)
 
     async with greeting_topic.receive(service.name) as output_header:
-        assert output_header.parent == input_header.id
+        assert output_header.parent == input_header.uuid
         output_message = output_header.message
         assert output_message
         assert output_message.name == "Greg"

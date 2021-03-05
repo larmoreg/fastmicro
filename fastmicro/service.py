@@ -1,8 +1,11 @@
 import asyncio
+import signal
 from typing import Any, Awaitable, Callable, Dict, List
 
 from .entrypoint import AT, BT, Entrypoint
 from .topic import Topic
+
+signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 
 class Service:

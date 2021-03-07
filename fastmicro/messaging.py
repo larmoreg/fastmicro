@@ -132,11 +132,15 @@ class MemoryMessaging(Messaging):
 
 class PulsarMessaging(Messaging):  # pragma: no cover
     def __init__(
-        self, serializer: str = "msgpack", broker_url: str = "pulsar://localhost:6650"
+        self,
+        serializer: str = "msgpack",
+        broker_url: str = "pulsar://localhost:6650",
+        *args,
+        **kwargs
     ) -> None:
         super().__init__(serializer)
         broker_url = os.getenv("BROKER_URL", broker_url)
-        self.client = pulsar.Client(broker_url)
+        self.client = pulsar.Client(broker_url, *args, **kwargs)
         self.consumers: Dict[Tuple[str, str], pulsar.Consumer] = dict()
         self.producers: Dict[str, pulsar.Producer] = dict()
         atexit.register(self.cleanup)

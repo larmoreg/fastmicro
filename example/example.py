@@ -38,5 +38,4 @@ async def greet(user: User) -> Greeting:
 
 
 if __name__ == "__main__":
-    # FIXME: this can't be killed
     service.run()

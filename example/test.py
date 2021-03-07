@@ -40,4 +40,3 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     greeting = loop.run_until_complete(greet.call(user))
     logger.error(greeting)
-    # FIXME: this should die automatically

@@ -1,7 +1,6 @@
 import pytest
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import Header
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 

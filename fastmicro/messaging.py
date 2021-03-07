@@ -28,7 +28,7 @@ class Messaging(abc.ABC):
         self.serializer = registrar.get(serializer)
 
     async def serialize(self, header: Header) -> bytes:
-        return await self.serializer.serialize(header.dict(exclude={"uuid", "message"}))
+        return await self.serializer.serialize(header.dict(exclude={"id", "message"}))
 
     async def deserialize(self, serialized: bytes) -> Header:
         header = await self.serializer.deserialize(serialized)
@@ -125,12 +125,11 @@ class MemoryMessaging(Messaging):
 
     async def send(self, topic: str, header: Header) -> None:
         queue = await self._get_queue(topic)
+        header.uuid = uuid4()
         serialized = await self.serialize(header)
         header.id = await queue.put(serialized)
-        header.uuid = uuid4()
 
 
-# TODO: test this
 class PulsarMessaging(Messaging):  # pragma: no cover
     def __init__(
         self, serializer: str = "msgpack", broker_url: str = "pulsar://localhost:6650"
@@ -175,6 +174,6 @@ class PulsarMessaging(Messaging):  # pragma: no cover
 
     async def send(self, topic: str, header: Header) -> None:
         producer = await self._get_producer(topic)
+        header.uuid = uuid4()
         serialized = await self.serialize(header)
         producer.send(serialized)
-        # FIXME: need to set header.id

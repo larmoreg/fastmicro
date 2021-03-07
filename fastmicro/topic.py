@@ -44,8 +44,7 @@ class Topic(Generic[T]):
         except Exception:
             logger.exception("Processing failed; nacking message")
             assert header.id
-            # await self.messaging.nack(self.name, name, header.id)
-            await self.messaging.ack(self.name, name, header.id)
+            await self.messaging.nack(self.name, name, header.id)
 
     async def send(self, message: Union[Header, Any]) -> Header:
         if isinstance(message, Header):

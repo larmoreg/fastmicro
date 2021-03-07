@@ -20,13 +20,13 @@ class Service:
         self.tasks: List[asyncio.Task[None]] = list()
 
     def entrypoint(
-        self, topic: Topic[AT], reply_topic: Topic[BT]
+        self, topic: Topic[AT], reply_topic: Topic[BT], mock: bool = False
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
             if topic.name in self.entrypoints:
                 raise ValueError(f"Entrypoint already registered for topic {topic.name}")
 
-            entrypoint = Entrypoint(self.name, callback, topic, reply_topic)
+            entrypoint = Entrypoint(self.name, callback, topic, reply_topic, mock=mock)
             self.entrypoints[topic.name] = entrypoint
             return entrypoint
 

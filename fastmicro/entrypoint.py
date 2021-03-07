@@ -16,11 +16,13 @@ class Entrypoint(Generic[AT, BT]):
         callback: Callable[[AT], Awaitable[BT]],
         topic: Topic[AT],
         reply_topic: Topic[BT],
+        mock: bool = False,
     ) -> None:
         self.name = name
         self.callback = callback
         self.topic = topic
         self.reply_topic = reply_topic
+        self.mock = mock
 
     async def process(self) -> None:
         # TODO: add batch processing?
@@ -38,6 +40,8 @@ class Entrypoint(Generic[AT, BT]):
     async def call(self, input_message: AT) -> BT:
         input_header = await self.topic.send(input_message)
         while True:
+            if self.mock:
+                await self.process()
             async with self.reply_topic.receive(self.name) as output_header:
                 if self._is_reply(input_header, output_header):
                     output_message = output_header.message

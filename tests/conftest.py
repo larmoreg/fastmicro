@@ -42,7 +42,7 @@ def greeting_topic(messaging: Messaging) -> Topic[Greeting]:
 def greet(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> Entrypoint[User, Greeting]:
-    @service.entrypoint(user_topic, greeting_topic)
+    @service.entrypoint(user_topic, greeting_topic, mock=True)
     async def _greet(user: User) -> Greeting:
         await asyncio.sleep(user.delay)
         return Greeting(name=user.name, greeting=f"Hello, {user.name}!")

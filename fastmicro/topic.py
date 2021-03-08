@@ -33,18 +33,18 @@ class Topic(Generic[T]):
         return self.schema(**message)
 
     @asynccontextmanager
-    async def receive(self, name: str) -> AsyncIterator[Header]:
+    async def receive(self, group_name: str, consumer_name) -> AsyncIterator[Header]:
         try:
-            header = await self.messaging.receive(self.name, name)
+            header = await self.messaging.receive(self.name, group_name, consumer_name)
             assert header.data
             header.message = await self.deserialize(header.data)
             yield header
             assert header.id
-            await self.messaging.ack(self.name, name, header.id)
+            await self.messaging.ack(self.name, group_name, header.id)
         except Exception:
             logger.exception("Processing failed; nacking message")
             assert header.id
-            await self.messaging.nack(self.name, name, header.id)
+            await self.messaging.nack(self.name, group_name, header.id)
 
     async def send(self, message: Union[Header, Any]) -> Header:
         if isinstance(message, Header):

@@ -19,7 +19,7 @@ async def test_service_process(
 
     await greet.process()
 
-    async with greeting_topic.receive(service.name) as output_header:
+    async with greeting_topic.receive(service.name, "test") as output_header:
         assert output_header.parent == input_header.uuid
         output_message = output_header.message
         assert output_message

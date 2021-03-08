@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import signal
 from typing import Any, Awaitable, Callable, Dict, List
 
 from .entrypoint import AT, BT, Entrypoint
 from .topic import Topic
+
+logger = logging.getLogger(__name__)
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
@@ -48,4 +51,7 @@ class Service:
     @staticmethod
     async def process(entrypoint: Entrypoint[AT, BT]) -> None:
         while True:
-            await entrypoint.process()
+            try:
+                await entrypoint.process()
+            except Exception:
+                logger.exception("Processing failed")

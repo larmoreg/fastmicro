@@ -5,7 +5,7 @@ import logging
 
 import pydantic
 
-from fastmicro.messaging import PulsarMessaging
+from fastmicro.messaging import RedisMessaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -23,7 +23,8 @@ class Greeting(pydantic.BaseModel):
 
 
 service = Service("test")
-messaging = PulsarMessaging()
+loop = asyncio.get_event_loop()
+messaging = loop.run_until_complete(RedisMessaging.create())
 user_topic = Topic(messaging, "user", User)
 greeting_topic = Topic(messaging, "greeting", Greeting)
 

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import signal
 from typing import Any, Awaitable, Callable, Dict, List
+import uvloop
 
 from .entrypoint import AT, BT, Entrypoint
 from .topic import Topic
@@ -9,6 +10,7 @@ from .topic import Topic
 logger = logging.getLogger(__name__)
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
+uvloop.install()
 
 
 class Service:

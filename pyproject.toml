@@ -12,6 +12,7 @@ mypy = "^0.812"
 pulsar-client = "^2.7.0"
 pydantic = "^1.7.3"
 python = "^3.8"
+uvloop = "^0.15.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.2"

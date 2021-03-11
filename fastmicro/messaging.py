@@ -137,42 +137,47 @@ class MemoryMessaging(Messaging):
 
 class RedisMessaging(Messaging):  # pragma: no cover
     def __init__(
-        self, serializer: str = "msgpack", address: str = "redis://localhost:6379", *args, **kwargs
+        self, serializer: str = "msgpack", address: str = "redis://localhost:6379"
     ) -> None:
         super().__init__(serializer)
         self.address = os.getenv("ADDRESS", address)
-
-    @classmethod
-    async def create(cls, *args, **kwargs):
-        self = RedisMessaging(*args, **kwargs)
-        self.redis = await aioredis.create_redis_pool(self.address)
-        return self
+        self.redis = None
 
     def cleanup(self) -> None:
-        self.redis.close()
+        if self.redis:
+            self.redis.close()
 
-    async def _topic_exists(self, topic_name):
+    async def _connect(self) -> None:
+        if not self.redis:
+            self.redis = await aioredis.create_redis(self.address)
+
+    async def _topic_exists(self, topic_name: str) -> bool:
         try:
+            assert self.redis
             await self.redis.xinfo_stream(topic_name)
         except aioredis.errors.ReplyError:
             return False
         return True
 
-    async def _group_exists(self, topic_name, group_name):
+    async def _group_exists(self, topic_name: str, group_name: str) -> bool:
+        assert self.redis
         groups_info = await self.redis.xinfo_groups(topic_name)
         for group_info in groups_info:
             if group_info[b"name"] == group_name.encode():
                 return True
         return False
 
-    async def _create_group(self, topic_name, group_name):
+    async def _create_group(self, topic_name: str, group_name: str) -> None:
         if not await self._topic_exists(topic_name) or not await self._group_exists(
             topic_name, group_name
         ):
+            assert self.redis
             await self.redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
 
     async def receive(self, topic_name: str, group_name: str, user_name: str) -> Header:
+        await self._connect()
         await self._create_group(topic_name, group_name)
+        assert self.redis
         messages = await self.redis.xread_group(
             group_name, user_name, [topic_name], latest_ids=[">"]
         )
@@ -183,6 +188,8 @@ class RedisMessaging(Messaging):  # pragma: no cover
         return header
 
     async def ack(self, topic_name: str, group_name: str, id: bytes) -> None:
+        await self._connect()
+        assert self.redis
         await self.redis.xack(topic_name, group_name, id)
 
     async def nack(self, topic_name: str, group_name: str, id: bytes) -> None:
@@ -191,6 +198,8 @@ class RedisMessaging(Messaging):  # pragma: no cover
     async def send(self, topic_name: str, header: Header) -> None:
         header.uuid = uuid4()
         serialized = await self.serialize(header)
+        await self._connect()
+        assert self.redis
         await self.redis.xadd(topic_name, {"data": serialized})
 
 
@@ -199,8 +208,8 @@ class PulsarMessaging(Messaging):  # pragma: no cover
         self,
         serializer: str = "msgpack",
         service_url: str = "pulsar://localhost:6650",
-        *args,
-        **kwargs
+        *args: Any,
+        **kwargs: Any
     ) -> None:
         super().__init__(serializer)
         service_url = os.getenv("SERVICE_URL", service_url)

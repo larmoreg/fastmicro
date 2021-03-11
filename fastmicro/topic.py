@@ -33,7 +33,7 @@ class Topic(Generic[T]):
         return self.schema(**message)
 
     @asynccontextmanager
-    async def receive(self, group_name: str, consumer_name) -> AsyncIterator[Header]:
+    async def receive(self, group_name: str, consumer_name: str) -> AsyncIterator[Header]:
         try:
             header = await self.messaging.receive(self.name, group_name, consumer_name)
             assert header.data

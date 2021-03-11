@@ -23,8 +23,7 @@ class Greeting(pydantic.BaseModel):
 
 
 service = Service("test")
-loop = asyncio.get_event_loop()
-messaging = loop.run_until_complete(RedisMessaging.create())
+messaging = RedisMessaging()
 user_topic = Topic(messaging, "user", User)
 greeting_topic = Topic(messaging, "greeting", Greeting)
 

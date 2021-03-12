@@ -20,12 +20,16 @@ class Greeting(pydantic.BaseModel):
 
 @pytest.fixture
 def messaging(event_loop: asyncio.AbstractEventLoop) -> Messaging:
-    return MemoryMessaging(loop=event_loop)
+    messaging = MemoryMessaging(loop=event_loop)
+    yield messaging
+    messaging.cleanup()
 
 
 @pytest.fixture
 def service(event_loop: asyncio.AbstractEventLoop, messaging: Messaging) -> Service:
-    return Service("test", loop=event_loop)
+    service = Service("test", loop=event_loop)
+    yield service
+    service.stop()
 
 
 @pytest.fixture

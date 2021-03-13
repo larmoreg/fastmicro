@@ -30,8 +30,7 @@ greeting_topic = Topic(messaging, "greeting", Greeting)
 
 @service.entrypoint(user_topic, greeting_topic)
 async def greet(user: User) -> Greeting:
-    await asyncio.sleep(user.delay)
-    return Greeting(name=user.name, greeting=f"Hello, {user.name}!")
+    ...
 
 
 if __name__ == "__main__":

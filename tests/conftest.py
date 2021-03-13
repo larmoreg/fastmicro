@@ -1,6 +1,7 @@
 import asyncio
 import pydantic
 import pytest
+from typing import AsyncGenerator
 
 from fastmicro.entrypoint import Entrypoint
 from fastmicro.messaging import MemoryMessaging, Messaging
@@ -24,7 +25,9 @@ def messaging(event_loop: asyncio.AbstractEventLoop) -> Messaging:
 
 
 @pytest.fixture
-async def service(event_loop: asyncio.AbstractEventLoop, messaging: Messaging) -> Service:
+async def service(
+    event_loop: asyncio.AbstractEventLoop, messaging: Messaging
+) -> AsyncGenerator[Service, None]:
     service = Service(messaging, "test", loop=event_loop)
     yield service
     await service.stop()

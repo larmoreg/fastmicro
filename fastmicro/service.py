@@ -1,10 +1,12 @@
 import asyncio
+import atexit
 import logging
 import signal
 from typing import Any, Awaitable, Callable, Dict, List
 import uvloop
 
 from .entrypoint import AT, BT, Entrypoint
+from .messaging import Messaging
 from .topic import Topic
 
 logger = logging.getLogger(__name__)
@@ -16,9 +18,11 @@ uvloop.install()
 class Service:
     def __init__(
         self,
+        messaging: Messaging,
         name: str,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
+        self.messaging = messaging
         self.name = name
         self.loop = loop
         self.entrypoints: Dict[str, Any] = dict()
@@ -42,13 +46,19 @@ class Service:
             task = self.loop.create_task(self.process(entrypoint), name=self.name)
             self.tasks.append(task)
 
+        atexit.register(self.kill)
         self.loop.run_forever()
 
-    def stop(self) -> None:
+    def kill(self) -> None:
+        self.loop.run_until_complete(self.stop())
+        self.loop.close()
+
+    async def stop(self) -> None:
         for task in self.tasks:
             task.cancel()
+            await task
 
-        self.loop.close()
+        await self.messaging.cleanup()
 
     @staticmethod
     async def process(entrypoint: Entrypoint[AT, BT]) -> None:

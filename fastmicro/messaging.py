@@ -1,6 +1,5 @@
 import abc
 import asyncio
-import atexit
 import os
 from typing import Any, Dict, Generic, List, Optional, Set, Tuple, TypeVar
 from uuid import UUID, uuid4
@@ -27,9 +26,8 @@ class Messaging(abc.ABC):
         serializer: str = "msgpack",
     ) -> None:
         self.serializer = registrar.get(serializer)
-        atexit.register(self.cleanup)
 
-    def cleanup(self) -> None:
+    async def cleanup(self) -> None:
         pass
 
     async def serialize(self, header: Header) -> bytes:
@@ -144,17 +142,13 @@ class RedisMessaging(Messaging):  # pragma: no cover
     ) -> None:
         super().__init__(serializer)
         self.address = os.getenv("ADDRESS", address)
-        if loop:
-            self.loop = loop
-        else:
-            self.loop = asyncio.get_event_loop()
-        self.redis = self.loop.run_until_complete(
-            aioredis.create_redis(self.address, loop=self.loop)
-        )
+        if not loop:
+            loop = asyncio.get_event_loop()
+        self.redis = loop.run_until_complete(aioredis.create_redis(self.address, loop=loop))
 
-    def cleanup(self) -> None:
+    async def cleanup(self) -> None:
         self.redis.close()
-        self.loop.run_until_complete(self.redis.wait_closed())
+        await self.redis.wait_closed()
 
     async def _topic_exists(self, topic_name: str) -> bool:
         try:
@@ -213,7 +207,7 @@ class PulsarMessaging(Messaging):  # pragma: no cover
         self.consumers: Dict[Tuple[str, str], pulsar.Consumer] = dict()
         self.producers: Dict[str, pulsar.Producer] = dict()
 
-    def cleanup(self) -> None:
+    async def cleanup(self) -> None:
         self.client.close()
 
     async def _get_consumer(self, topic_name: str, group_name: str) -> pulsar.Consumer:

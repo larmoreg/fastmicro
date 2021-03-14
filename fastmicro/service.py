@@ -32,18 +32,20 @@ class Service:
         self, topic: Topic[AT], reply_topic: Topic[BT], mock: bool = False
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
-            if topic.name in self.entrypoints:
-                raise ValueError(f"Entrypoint already registered for topic {topic.name}")
+            name = callback.__name__
+            if name in self.entrypoints:
+                raise ValueError(f"Function {name} already registered in service {self.name}")
 
-            entrypoint = Entrypoint(self.name, callback, topic, reply_topic, mock=mock)
-            self.entrypoints[topic.name] = entrypoint
+            entrypoint = Entrypoint(self.name + "_" + name, callback, topic, reply_topic, mock=mock)
+            self.entrypoints[name] = entrypoint
             return entrypoint
 
         return _entrypoint
 
     def run(self) -> None:
         for entrypoint in self.entrypoints.values():
-            task = self.loop.create_task(self.process(entrypoint), name=self.name)
+            logger.debug(f"Starting task {entrypoint.name}")
+            task = self.loop.create_task(self.process(entrypoint), name=entrypoint.name)
             self.tasks.append(task)
 
         atexit.register(self.kill)
@@ -55,6 +57,7 @@ class Service:
 
     async def stop(self) -> None:
         for task in self.tasks:
+            logger.debug(f"Stopping task {task.name}")
             task.cancel()
             await task
 

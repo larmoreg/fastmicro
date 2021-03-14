@@ -1,5 +1,6 @@
 import abc
 import asyncio
+import logging
 import os
 from typing import Any, Dict, Generic, List, Optional, Set, Tuple, TypeVar
 from uuid import UUID, uuid4
@@ -9,6 +10,8 @@ import pulsar
 import pydantic
 
 from .registrar import registrar
+
+logger = logging.getLogger(__name__)
 
 
 class Header(pydantic.BaseModel):
@@ -116,6 +119,7 @@ class MemoryMessaging(Messaging):
         message_id, serialized = await queue.get()
         header = await self.deserialize(serialized)
         header.id = message_id
+        logger.debug(f"Received: {header}")
         return header
 
     async def ack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
@@ -127,6 +131,7 @@ class MemoryMessaging(Messaging):
         await queue.nack(message_id)
 
     async def send(self, topic_name: str, header: Header) -> None:
+        logger.debug(f"Sending: {header}")
         queue = await self._get_queue(topic_name)
         header.uuid = uuid4()
         serialized = await self.serialize(header)
@@ -144,7 +149,9 @@ class RedisMessaging(Messaging):  # pragma: no cover
         self.address = os.getenv("ADDRESS", address)
         if not loop:
             loop = asyncio.get_event_loop()
-        self.redis = loop.run_until_complete(aioredis.create_redis(self.address, loop=loop))
+        self.redis = loop.run_until_complete(
+            aioredis.create_redis_pool(self.address, loop=loop, minsize=2)
+        )
 
     async def cleanup(self) -> None:
         self.redis.close()
@@ -179,6 +186,7 @@ class RedisMessaging(Messaging):  # pragma: no cover
         stream, message_id, message = messages[0]
         header = await self.deserialize(message[b"data"])
         header.id = message_id
+        logger.debug(f"Received: {header}")
         return header
 
     async def ack(self, topic_name: str, group_name: str, id: bytes) -> None:
@@ -188,6 +196,7 @@ class RedisMessaging(Messaging):  # pragma: no cover
         pass
 
     async def send(self, topic_name: str, header: Header) -> None:
+        logger.debug(f"Sending: {header}")
         header.uuid = uuid4()
         serialized = await self.serialize(header)
         await self.redis.xadd(topic_name, {"data": serialized})
@@ -199,7 +208,7 @@ class PulsarMessaging(Messaging):  # pragma: no cover
         serializer: str = "msgpack",
         service_url: str = "pulsar://localhost:6650",
         *args: Any,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         super().__init__(serializer)
         service_url = os.getenv("SERVICE_URL", service_url)
@@ -226,6 +235,7 @@ class PulsarMessaging(Messaging):  # pragma: no cover
         message = consumer.receive()
         header = await self.deserialize(message.data())
         header.id = message.message_id().serialize()
+        logger.debug(f"Received: {header}")
         return header
 
     async def ack(self, topic_name: str, group_name: str, id: bytes) -> None:
@@ -239,6 +249,7 @@ class PulsarMessaging(Messaging):  # pragma: no cover
         consumer.negative_acknowledge(temp)
 
     async def send(self, topic_name: str, header: Header) -> None:
+        logger.debug(f"Sending: {header}")
         producer = await self._get_producer(topic_name)
         header.uuid = uuid4()
         serialized = await self.serialize(header)

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import logging.config
 
 import pydantic
 
@@ -9,6 +10,7 @@ from fastmicro.messaging import RedisMessaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
+logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 
@@ -24,18 +26,28 @@ class Greeting(pydantic.BaseModel):
 
 messaging = RedisMessaging()
 service = Service(messaging, "test")
-user_topic = Topic(messaging, "user", User)
+greet_user_topic = Topic(messaging, "greet_user", User)
 greeting_topic = Topic(messaging, "greeting", Greeting)
+insult_user_topic = Topic(messaging, "insult_user", User)
+insult_topic = Topic(messaging, "insult", Greeting)
 
 
-@service.entrypoint(user_topic, greeting_topic)
+@service.entrypoint(greet_user_topic, greeting_topic)
 async def greet(user: User) -> Greeting:
     ...
 
 
+@service.entrypoint(insult_user_topic, insult_topic)
+async def insult(user: User) -> Greeting:
+    ...
+
+
 if __name__ == "__main__":
-    user = User(name="Greg")
-    logger.error(user)
+    greg = User(name="Greg", delay=2)
+    cara = User(name="Cara", delay=1)
+    print(greg)
+    print(cara)
     loop = asyncio.get_event_loop()
-    greeting = loop.run_until_complete(greet.call(user))
-    logger.error(greeting)
+    tasks = [insult.call(greg), greet.call(cara)]
+    greetings = loop.run_until_complete(asyncio.gather(*tasks))
+    print(greetings)

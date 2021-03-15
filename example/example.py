@@ -24,12 +24,11 @@ class Greeting(pydantic.BaseModel):
     greeting: str
 
 
-messaging = RedisMessaging()
-service = Service(messaging, "test")
-greet_user_topic = Topic(messaging, "greet_user", User)
-greeting_topic = Topic(messaging, "greeting", Greeting)
-insult_user_topic = Topic(messaging, "insult_user", User)
-insult_topic = Topic(messaging, "insult", Greeting)
+service = Service(RedisMessaging, "test")
+greet_user_topic = Topic("greet_user", User)
+greeting_topic = Topic("greeting", Greeting)
+insult_user_topic = Topic("insult_user", User)
+insult_topic = Topic("insult", Greeting)
 
 
 @service.entrypoint(greet_user_topic, greeting_topic)

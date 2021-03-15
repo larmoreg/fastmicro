@@ -1,57 +1,45 @@
-from contextlib import asynccontextmanager
-import logging
-from typing import Any, AsyncIterator, Generic, Type, TypeVar, Union
+from typing import Any, Generic, Optional, Type, TypeVar
+from uuid import UUID, uuid4
 
 import pydantic
 
-from .messaging import Header, Messaging
-from .registrar import registrar
-
-logger = logging.getLogger(__name__)
+from .serializer import Serializer, MsgpackSerializer
 
 T = TypeVar("T", bound=pydantic.BaseModel)
+
+
+class Header(pydantic.BaseModel):
+    id: Optional[bytes]
+    data: Optional[bytes]
+
+    uuid: Optional[UUID]
+    parent: Optional[UUID]
+    message: Optional[Any]
 
 
 class Topic(Generic[T]):
     def __init__(
         self,
-        messaging: Messaging,
         name: str,
         schema: Type[T],
-        serializer: str = "msgpack",
+        serializer: Type[Serializer] = MsgpackSerializer,
     ):
-        self.messaging = messaging
         self.name = name
         self.schema = schema
-        self.serializer = registrar.get(serializer)
+        self.serializer = serializer()
 
-    async def serialize(self, message: T) -> bytes:
-        return await self.serializer.serialize(message.dict())
-
-    async def deserialize(self, serialized: bytes) -> T:
-        message = await self.serializer.deserialize(serialized)
-        return self.schema(**message)
-
-    @asynccontextmanager
-    async def receive(self, group_name: str, consumer_name: str) -> AsyncIterator[Header]:
-        try:
-            header = await self.messaging.receive(self.name, group_name, consumer_name)
-            assert header.data
-            header.message = await self.deserialize(header.data)
-            yield header
-            assert header.id
-            await self.messaging.ack(self.name, group_name, header.id)
-        except Exception:
-            logger.exception("Processing failed; nacking message")
-            assert header.id
-            await self.messaging.nack(self.name, group_name, header.id)
-
-    async def send(self, message: Union[Header, Any]) -> Header:
-        if isinstance(message, Header):
-            header = message
-        else:
-            header = Header(message=message)
+    async def serialize(self, header: Header) -> bytes:
+        header.uuid = uuid4()
         assert header.message
-        header.data = await self.serialize(header.message)
-        await self.messaging.send(self.name, header)
+        header.data = await self.serializer.serialize(header.message.dict())
+        serialized = await self.serializer.serialize(header.dict())
+        return serialized
+
+    async def deserialize(self, message_id: bytes, serialized: bytes) -> Header:
+        header_data = await self.serializer.deserialize(serialized)
+        header = Header(**header_data)
+        header.id = message_id
+        assert header.data
+        message_data = await self.serializer.deserialize(header.data)
+        header.message = self.schema(**message_data)
         return header

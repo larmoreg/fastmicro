@@ -4,7 +4,7 @@ import pytest
 from typing import AsyncGenerator
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import MemoryMessaging, Messaging
+from fastmicro.messaging import Messaging, RedisMessaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -20,36 +20,42 @@ class Greeting(pydantic.BaseModel):
 
 
 @pytest.fixture
-def messaging(event_loop: asyncio.AbstractEventLoop) -> Messaging:
-    return MemoryMessaging(loop=event_loop)
-
-
-@pytest.fixture
 async def service(
-    event_loop: asyncio.AbstractEventLoop, messaging: Messaging
+    event_loop: asyncio.AbstractEventLoop,
 ) -> AsyncGenerator[Service, None]:
-    service = Service(messaging, "test", loop=event_loop)
+    service = Service(RedisMessaging, "test", loop=event_loop)
     yield service
-    await service.stop()
 
 
 @pytest.fixture
-def user_topic(messaging: Messaging) -> Topic[User]:
-    return Topic(messaging, "user", User)
+async def messaging(
+    event_loop: asyncio.AbstractEventLoop,
+) -> AsyncGenerator[Messaging, None]:
+    messaging = RedisMessaging(loop=event_loop)
+    await messaging.connect()
+    yield messaging
+    await messaging.cleanup()
 
 
 @pytest.fixture
-def greeting_topic(messaging: Messaging) -> Topic[Greeting]:
-    return Topic(messaging, "greeting", Greeting)
+def user_topic() -> Topic[User]:
+    return Topic("user", User)
 
 
 @pytest.fixture
-def greet(
+def greeting_topic() -> Topic[Greeting]:
+    return Topic("greeting", Greeting)
+
+
+@pytest.fixture
+async def greet(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
-) -> Entrypoint[User, Greeting]:
-    @service.entrypoint(user_topic, greeting_topic, mock=True)
+) -> AsyncGenerator[Entrypoint[User, Greeting], None]:
+    @service.entrypoint(user_topic, greeting_topic)
     async def _greet(user: User) -> Greeting:
         await asyncio.sleep(user.delay)
         return Greeting(name=user.name, greeting=f"Hello, {user.name}!")
 
-    return _greet
+    await _greet.run()
+    yield _greet
+    await _greet.stop()

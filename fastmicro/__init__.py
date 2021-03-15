@@ -1,1 +1,1 @@
-__all__ = ["entrypoint", "messaging", "registrar", "serializer", "service", "topic"]
+__all__ = ["entrypoint", "messaging", "serializer", "service", "topic"]

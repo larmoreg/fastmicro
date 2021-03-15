@@ -1,75 +1,99 @@
 import abc
 import asyncio
+from contextlib import asynccontextmanager
 import logging
 import os
-from typing import Any, Dict, Generic, List, Optional, Set, Tuple, TypeVar
-from uuid import UUID, uuid4
+from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import aioredis
 import pulsar
 import pydantic
 
-from .registrar import registrar
+from .topic import Header, Topic
 
 logger = logging.getLogger(__name__)
 
-
-class Header(pydantic.BaseModel):
-    id: Optional[bytes]
-    data: Optional[bytes]
-
-    uuid: Optional[UUID]
-    parent: Optional[UUID]
-    message: Optional[Any]
+T = TypeVar("T", bound=pydantic.BaseModel)
 
 
 class Messaging(abc.ABC):
-    def __init__(
-        self,
-        serializer: str = "msgpack",
-    ) -> None:
-        self.serializer = registrar.get(serializer)
+    async def connect(self) -> None:
+        pass
 
     async def cleanup(self) -> None:
         pass
 
-    async def serialize(self, header: Header) -> bytes:
-        return await self.serializer.serialize(header.dict(exclude={"id", "message"}))
-
-    async def deserialize(self, serialized: bytes) -> Header:
-        header = await self.serializer.deserialize(serialized)
-        return Header(**header)
-
     @abc.abstractmethod
-    async def receive(self, topic_name: str, group_name: str, user_name: str) -> Header:
+    async def _receive(
+        self, topic_name: str, group_name: str, user_name: str
+    ) -> Tuple[bytes, bytes]:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def ack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
+    async def _ack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def nack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
+    async def _nack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def send(self, topic_name: str, header: Header) -> None:
+    async def _send(self, topic_name: str, serialized: bytes) -> None:
         raise NotImplementedError
 
+    @asynccontextmanager
+    async def receive(
+        self, topic: Topic[T], group_name: str, consumer_name: str
+    ) -> AsyncIterator[Header]:
+        try:
+            message_id, serialized = await self._receive(topic.name, group_name, consumer_name)
+            logger.debug(f"Received {message_id!r} {serialized!r}")
+            header = await topic.deserialize(message_id, serialized)
+            yield header
+            assert header.id
+            logger.debug(f"Acking {header.id!r}")
+            await self._ack(topic.name, group_name, header.id)
+        except Exception:
+            logger.exception("Processing failed")
+            assert header.id
+            logger.debug(f"Nacking {header.id!r}")
+            await self._nack(topic.name, group_name, header.id)
 
-T = TypeVar("T")
+    async def send(self, topic: Topic[T], message: Union[Header, Any]) -> Header:
+        if isinstance(message, Header):
+            header = message
+        else:
+            header = Header(message=message)
+        serialized = await topic.serialize(header)
+        logger.debug(f"Sending {serialized!r}")
+        await self._send(topic.name, serialized)
+        return header
 
 
-class Queue(Generic[T]):
+QT = TypeVar("QT")
+
+
+class Queue(Generic[QT]):
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         self.lock: asyncio.Lock = asyncio.Lock(loop=loop)
-        self.queue: asyncio.Queue[Tuple[bytes, T]] = asyncio.Queue(loop=loop)
+        self.queue: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=loop)
         self.index: int = 0
-        self.items: Dict[bytes, T] = dict()
+        self.items: Dict[bytes, QT] = dict()
         self.pending: Set[bytes] = set()
         self.nacked: List[bytes] = list()
 
-    async def get(self) -> Tuple[bytes, T]:
+    async def get(self) -> Tuple[bytes, QT]:
         async with self.lock:
             if self.nacked:
                 message_id = self.nacked.pop()
@@ -79,7 +103,7 @@ class Queue(Generic[T]):
             self.pending.add(message_id)
         return message_id, self.items[message_id]
 
-    async def put(self, item: T) -> bytes:
+    async def put(self, item: QT) -> bytes:
         message_id = str(self.index).encode()
         self.index += 1
         await self.queue.put((message_id, item))
@@ -100,10 +124,8 @@ class Queue(Generic[T]):
 class MemoryMessaging(Messaging):
     def __init__(
         self,
-        serializer: str = "msgpack",
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__(serializer)
         self.loop = loop
         self.lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
         self.queues: Dict[str, Queue[bytes]] = dict()
@@ -114,57 +136,58 @@ class MemoryMessaging(Messaging):
                 self.queues[topic_name] = Queue(self.loop)
             return self.queues[topic_name]
 
-    async def receive(self, topic_name: str, group_name: str, user_name: str) -> Header:
+    async def _receive(
+        self, topic_name: str, group_name: str, user_name: str
+    ) -> Tuple[bytes, bytes]:
         queue = await self._get_queue(topic_name)
         message_id, serialized = await queue.get()
-        header = await self.deserialize(serialized)
-        header.id = message_id
-        logger.debug(f"Received: {header}")
-        return header
+        return message_id, serialized
 
-    async def ack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
+    async def _ack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
         queue = await self._get_queue(topic_name)
         await queue.ack(message_id)
 
-    async def nack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
+    async def _nack(self, topic_name: str, group_name: str, message_id: bytes) -> None:
         queue = await self._get_queue(topic_name)
         await queue.nack(message_id)
 
-    async def send(self, topic_name: str, header: Header) -> None:
-        logger.debug(f"Sending: {header}")
+    async def _send(self, topic_name: str, serialized: bytes) -> None:
         queue = await self._get_queue(topic_name)
-        header.uuid = uuid4()
-        serialized = await self.serialize(header)
-        header.id = await queue.put(serialized)
+        await queue.put(serialized)
 
 
 class RedisMessaging(Messaging):  # pragma: no cover
     def __init__(
         self,
-        serializer: str = "msgpack",
         address: str = "redis://localhost:6379",
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__(serializer)
         self.address = os.getenv("ADDRESS", address)
-        if not loop:
-            loop = asyncio.get_event_loop()
-        self.redis = loop.run_until_complete(
-            aioredis.create_redis_pool(self.address, loop=loop, minsize=2)
-        )
+        if loop:
+            self.loop = loop
+        else:
+            self.loop = asyncio.get_event_loop()
+        self.redis = None
+
+    async def connect(self) -> None:
+        if not self.redis:
+            self.redis = await aioredis.create_redis(self.address, loop=self.loop)
 
     async def cleanup(self) -> None:
-        self.redis.close()
-        await self.redis.wait_closed()
+        if self.redis:
+            self.redis.close()
+            await self.redis.wait_closed()
 
     async def _topic_exists(self, topic_name: str) -> bool:
         try:
+            assert self.redis
             await self.redis.xinfo_stream(topic_name)
         except aioredis.errors.ReplyError:
             return False
         return True
 
     async def _group_exists(self, topic_name: str, group_name: str) -> bool:
+        assert self.redis
         groups_info = await self.redis.xinfo_groups(topic_name)
         for group_info in groups_info:
             if group_info[b"name"] == group_name.encode():
@@ -175,44 +198,40 @@ class RedisMessaging(Messaging):  # pragma: no cover
         if not await self._topic_exists(topic_name) or not await self._group_exists(
             topic_name, group_name
         ):
+            assert self.redis
             await self.redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
 
-    async def receive(self, topic_name: str, group_name: str, user_name: str) -> Header:
+    async def _receive(
+        self, topic_name: str, group_name: str, user_name: str
+    ) -> Tuple[bytes, bytes]:
         await self._create_group(topic_name, group_name)
+        assert self.redis
         messages = await self.redis.xread_group(
             group_name, user_name, [topic_name], latest_ids=[">"]
         )
         assert len(messages) == 1
         stream, message_id, message = messages[0]
-        header = await self.deserialize(message[b"data"])
-        header.id = message_id
-        logger.debug(f"Received: {header}")
-        return header
+        return message_id, message[b"data"]
 
-    async def ack(self, topic_name: str, group_name: str, id: bytes) -> None:
+    async def _ack(self, topic_name: str, group_name: str, id: bytes) -> None:
+        assert self.redis
         await self.redis.xack(topic_name, group_name, id)
 
-    async def nack(self, topic_name: str, group_name: str, id: bytes) -> None:
+    async def _nack(self, topic_name: str, group_name: str, id: bytes) -> None:
         pass
 
-    async def send(self, topic_name: str, header: Header) -> None:
-        logger.debug(f"Sending: {header}")
-        header.uuid = uuid4()
-        serialized = await self.serialize(header)
+    async def _send(self, topic_name: str, serialized: bytes) -> None:
+        assert self.redis
         await self.redis.xadd(topic_name, {"data": serialized})
 
 
 class PulsarMessaging(Messaging):  # pragma: no cover
     def __init__(
         self,
-        serializer: str = "msgpack",
         service_url: str = "pulsar://localhost:6650",
-        *args: Any,
-        **kwargs: Any,
     ) -> None:
-        super().__init__(serializer)
         service_url = os.getenv("SERVICE_URL", service_url)
-        self.client = pulsar.Client(service_url, *args, **kwargs)
+        self.client = pulsar.Client(service_url)
         self.consumers: Dict[Tuple[str, str], pulsar.Consumer] = dict()
         self.producers: Dict[str, pulsar.Producer] = dict()
 
@@ -230,27 +249,23 @@ class PulsarMessaging(Messaging):  # pragma: no cover
             self.producers[topic_name] = self.client.create_producer(topic_name)
         return self.producers[topic_name]
 
-    async def receive(self, topic_name: str, group_name: str, user_name: str) -> Header:
+    async def _receive(
+        self, topic_name: str, group_name: str, user_name: str
+    ) -> Tuple[bytes, bytes]:
         consumer = await self._get_consumer(topic_name, group_name)
         message = consumer.receive()
-        header = await self.deserialize(message.data())
-        header.id = message.message_id().serialize()
-        logger.debug(f"Received: {header}")
-        return header
+        return message.message_id(), message.data()
 
-    async def ack(self, topic_name: str, group_name: str, id: bytes) -> None:
+    async def _ack(self, topic_name: str, group_name: str, id: bytes) -> None:
         temp = pulsar.MessageId.deserialize(id)
         consumer = await self._get_consumer(topic_name, group_name)
         consumer.acknowledge(temp)
 
-    async def nack(self, topic_name: str, group_name: str, id: bytes) -> None:
+    async def _nack(self, topic_name: str, group_name: str, id: bytes) -> None:
         temp = pulsar.MessageId.deserialize(id)
         consumer = await self._get_consumer(topic_name, group_name)
         consumer.negative_acknowledge(temp)
 
-    async def send(self, topic_name: str, header: Header) -> None:
-        logger.debug(f"Sending: {header}")
+    async def _send(self, topic_name: str, serialized: bytes) -> None:
         producer = await self._get_producer(topic_name)
-        header.uuid = uuid4()
-        serialized = await self.serialize(header)
         producer.send(serialized)

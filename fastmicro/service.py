@@ -1,8 +1,9 @@
 import asyncio
 import atexit
+import functools
 import logging
 import signal
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict, Type, Union
 import uvloop
 
 from .entrypoint import AT, BT, Entrypoint
@@ -18,25 +19,33 @@ uvloop.install()
 class Service:
     def __init__(
         self,
-        messaging: Messaging,
+        messaging_cls: Union[Type[Messaging], Callable[[], Messaging]],
         name: str,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
-        self.messaging = messaging
+        self.messaging_cls = functools.partial(messaging_cls, loop=loop)
         self.name = name
         self.loop = loop
         self.entrypoints: Dict[str, Any] = dict()
-        self.tasks: List[asyncio.Task[None]] = list()
 
     def entrypoint(
-        self, topic: Topic[AT], reply_topic: Topic[BT], mock: bool = False
+        self,
+        topic: Topic[AT],
+        reply_topic: Topic[BT],
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
             name = callback.__name__
             if name in self.entrypoints:
                 raise ValueError(f"Function {name} already registered in service {self.name}")
 
-            entrypoint = Entrypoint(self.name + "_" + name, callback, topic, reply_topic, mock=mock)
+            entrypoint = Entrypoint(
+                self.messaging_cls,
+                self.name + "_" + name,
+                callback,
+                topic,
+                reply_topic,
+                loop=self.loop,
+            )
             self.entrypoints[name] = entrypoint
             return entrypoint
 
@@ -44,9 +53,7 @@ class Service:
 
     def run(self) -> None:
         for entrypoint in self.entrypoints.values():
-            logger.debug(f"Starting task {entrypoint.name}")
-            task = self.loop.create_task(self.process(entrypoint), name=entrypoint.name)
-            self.tasks.append(task)
+            self.loop.run_until_complete(entrypoint.run())
 
         atexit.register(self.kill)
         self.loop.run_forever()
@@ -56,17 +63,5 @@ class Service:
         self.loop.close()
 
     async def stop(self) -> None:
-        for task in self.tasks:
-            logger.debug(f"Stopping task {task.name}")
-            task.cancel()
-            await task
-
-        await self.messaging.cleanup()
-
-    @staticmethod
-    async def process(entrypoint: Entrypoint[AT, BT]) -> None:
-        while True:
-            try:
-                await entrypoint.process()
-            except Exception:
-                logger.exception("Processing failed")
+        for entrypoint in self.entrypoints.values():
+            await entrypoint.stop()

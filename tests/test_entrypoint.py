@@ -6,10 +6,10 @@ from .conftest import User, Greeting
 
 
 @pytest.mark.asyncio()
-async def test_entrypoint_call(greet: Entrypoint[User, Greeting]) -> None:
+async def test_entrypoint_call(entrypoint: Entrypoint[User, Greeting]) -> None:
     input_message = User(name="Greg")
 
-    output_message = await greet.call(input_message)
+    output_message = await entrypoint.call(input_message, mock=True)
 
     assert output_message.name == "Greg"
     assert output_message.greeting == "Hello, Greg!"

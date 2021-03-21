@@ -22,9 +22,8 @@ class Greeting(pydantic.BaseModel):
 @pytest.fixture
 async def service(
     event_loop: asyncio.AbstractEventLoop,
-) -> AsyncGenerator[Service, None]:
-    service = Service(RedisMessaging, "test", loop=event_loop)
-    yield service
+) -> Service:
+    return Service(RedisMessaging, "test", loop=event_loop)
 
 
 @pytest.fixture
@@ -48,14 +47,14 @@ def greeting_topic() -> Topic[Greeting]:
 
 
 @pytest.fixture
-async def greet(
+async def entrypoint(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> AsyncGenerator[Entrypoint[User, Greeting], None]:
     @service.entrypoint(user_topic, greeting_topic)
-    async def _greet(user: User) -> Greeting:
+    async def greet(user: User) -> Greeting:
         await asyncio.sleep(user.delay)
         return Greeting(name=user.name, greeting=f"Hello, {user.name}!")
 
-    await _greet.run()
-    yield _greet
-    await _greet.stop()
+    await greet.connect()
+    yield greet
+    await greet.cleanup()

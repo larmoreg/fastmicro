@@ -32,15 +32,24 @@ class Entrypoint(Generic[AT, BT]):
         self.reply_topic = reply_topic
         self.consumer_name = consumer_name
         self.loop = loop
+        self.messaging: Optional[Messaging] = None
         self.task: Optional[asyncio.Task[None]] = None
 
-    async def run(self) -> None:
-        if not self.task:
+    async def connect(self) -> None:
+        if not self.messaging:
             self.messaging = self.messaging_cls()
             await self.messaging.connect()
 
+    async def cleanup(self) -> None:
+        if self.messaging:
+            await self.messaging.cleanup()
+
+    async def run(self) -> None:
+        if not self.task:
+            await self.connect()
+
             logger.debug(f"Starting {self.name}")
-            self.task = self.loop.create_task(self.process(), name=self.name)
+            self.task = self.loop.create_task(self.process_loop(), name=self.name)
 
     async def stop(self) -> None:
         if self.task:
@@ -48,10 +57,11 @@ class Entrypoint(Generic[AT, BT]):
             self.task.cancel()
             await self.task
 
-            await self.messaging.cleanup()
+            await self.cleanup()
 
     async def process(self) -> None:
         # TODO: add batch processing?
+        assert self.messaging
         async with self.messaging.receive(
             self.topic, self.name, self.consumer_name
         ) as input_header:
@@ -63,16 +73,28 @@ class Entrypoint(Generic[AT, BT]):
 
         await self.messaging.send(self.reply_topic, output_header)
 
+    async def process_loop(self) -> None:
+        while True:
+            await self.process()
+
     @staticmethod
     def _is_reply(input_header: Header, output_header: Header) -> bool:
         return output_header.parent == input_header.uuid
 
-    async def call(self, input_message: AT) -> BT:
+    async def call(self, input_message: AT, mock: bool = False) -> BT:
         messaging = self.messaging_cls()
         await messaging.connect()
 
+        if mock:
+            await messaging._prepare(self.topic.name, self.name)
+        await messaging._prepare(self.reply_topic.name, self.name)
+
         logger.debug(f"Calling: {input_message}")
         input_header = await messaging.send(self.topic, input_message)
+
+        if mock:
+            await self.process()
+
         while True:
             async with messaging.receive(
                 self.reply_topic, self.name, self.consumer_name

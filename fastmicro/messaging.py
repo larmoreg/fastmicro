@@ -34,6 +34,9 @@ class Messaging(abc.ABC):
     async def cleanup(self) -> None:
         pass
 
+    async def _prepare(self, topic_name: str, group_name: str) -> None:
+        pass
+
     @abc.abstractmethod
     async def _receive(
         self, topic_name: str, group_name: str, user_name: str
@@ -57,6 +60,7 @@ class Messaging(abc.ABC):
         self, topic: Topic[T], group_name: str, consumer_name: str
     ) -> AsyncIterator[Header]:
         try:
+            await self._prepare(topic.name, group_name)
             message_id, serialized = await self._receive(topic.name, group_name, consumer_name)
             logger.debug(f"Received {message_id!r} {serialized!r}")
             header = await topic.deserialize(message_id, serialized)
@@ -201,15 +205,16 @@ class RedisMessaging(Messaging):  # pragma: no cover
             assert self.redis
             await self.redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
 
+    async def _prepare(self, topic_name: str, group_name: str) -> None:
+        await self._create_group(topic_name, group_name)
+
     async def _receive(
         self, topic_name: str, group_name: str, user_name: str
     ) -> Tuple[bytes, bytes]:
-        await self._create_group(topic_name, group_name)
         assert self.redis
         messages = await self.redis.xread_group(
             group_name, user_name, [topic_name], latest_ids=[">"]
         )
-        assert len(messages) == 1
         stream, message_id, message = messages[0]
         return message_id, message[b"data"]
 
@@ -240,14 +245,17 @@ class PulsarMessaging(Messaging):  # pragma: no cover
 
     async def _get_consumer(self, topic_name: str, group_name: str) -> pulsar.Consumer:
         key = topic_name, group_name
-        if key not in self.consumers:
-            self.consumers[key] = self.client.subscribe(topic_name, group_name)
         return self.consumers[key]
 
     async def _get_producer(self, topic_name: str) -> pulsar.Producer:
         if topic_name not in self.producers:
             self.producers[topic_name] = self.client.create_producer(topic_name)
         return self.producers[topic_name]
+
+    async def _prepare(self, topic_name: str, group_name: str) -> None:
+        key = topic_name, group_name
+        if key not in self.consumers:
+            self.consumers[key] = self.client.subscribe(topic_name, group_name)
 
     async def _receive(
         self, topic_name: str, group_name: str, user_name: str

@@ -24,7 +24,8 @@ class Greeting(pydantic.BaseModel):
     greeting: str
 
 
-service = Service(RedisMessaging, "test")
+messaging = RedisMessaging()
+service = Service(messaging, "test")
 greet_user_topic = Topic("greet_user", User)
 greeting_topic = Topic("greeting", Greeting)
 insult_user_topic = Topic("insult_user", User)
@@ -41,12 +42,21 @@ async def insult(user: User) -> Greeting:
     ...
 
 
-if __name__ == "__main__":
+async def test():
+    await messaging.connect()
+
     greg = User(name="Greg", delay=2)
     cara = User(name="Cara", delay=1)
     print(greg)
     print(cara)
-    loop = asyncio.get_event_loop()
+
     tasks = [insult.call(greg), greet.call(cara)]
-    greetings = loop.run_until_complete(asyncio.gather(*tasks))
+    greetings = await asyncio.gather(*tasks)
     print(greetings)
+
+    await messaging.cleanup()
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(test())

@@ -175,7 +175,7 @@ class RedisMessaging(Messaging):  # pragma: no cover
 
     async def connect(self) -> None:
         if not self.redis:
-            self.redis = await aioredis.create_redis(self.address, loop=self.loop)
+            self.redis = await aioredis.create_redis_pool(self.address, loop=self.loop, minsize=10)
 
     async def cleanup(self) -> None:
         if self.redis:

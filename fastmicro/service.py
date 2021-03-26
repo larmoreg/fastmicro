@@ -1,9 +1,8 @@
 import asyncio
 import atexit
-import functools
 import logging
 import signal
-from typing import Any, Awaitable, Callable, Dict, Type, Union
+from typing import Any, Awaitable, Callable, Dict
 import uvloop
 
 from .entrypoint import AT, BT, Entrypoint
@@ -19,11 +18,11 @@ uvloop.install()
 class Service:
     def __init__(
         self,
-        messaging_cls: Union[Type[Messaging], Callable[[], Messaging]],
+        messaging: Messaging,
         name: str,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
-        self.messaging_cls = functools.partial(messaging_cls, loop=loop)
+        self.messaging = messaging
         self.name = name
         self.loop = loop
         self.entrypoints: Dict[str, Any] = dict()
@@ -39,7 +38,7 @@ class Service:
                 raise ValueError(f"Function {name} already registered in service {self.name}")
 
             entrypoint = Entrypoint(
-                self.messaging_cls,
+                self.messaging,
                 self.name + "_" + name,
                 callback,
                 topic,
@@ -51,10 +50,14 @@ class Service:
 
         return _entrypoint
 
-    def run(self) -> None:
-        for entrypoint in self.entrypoints.values():
-            self.loop.run_until_complete(entrypoint.run())
+    async def _run(self) -> None:
+        await self.messaging.connect()
 
+        for entrypoint in self.entrypoints.values():
+            await entrypoint.run()
+
+    def run(self) -> None:
+        self.loop.run_until_complete(self._run())
         atexit.register(self.kill)
         self.loop.run_forever()
 
@@ -65,3 +68,5 @@ class Service:
     async def stop(self) -> None:
         for entrypoint in self.entrypoints.values():
             await entrypoint.stop()
+
+        await self.messaging.cleanup()

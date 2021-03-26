@@ -4,7 +4,7 @@ import pytest
 from typing import AsyncGenerator
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import Messaging, RedisMessaging
+from fastmicro.messaging import Messaging, MemoryMessaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -23,10 +23,10 @@ class Greeting(pydantic.BaseModel):
 async def messaging(
     event_loop: asyncio.AbstractEventLoop,
 ) -> AsyncGenerator[Messaging, None]:
-    messaging = RedisMessaging(loop=event_loop)
-    await messaging.connect()
-    yield messaging
-    await messaging.cleanup()
+    _messaging = MemoryMessaging(loop=event_loop)
+    await _messaging.connect()
+    yield _messaging
+    await _messaging.cleanup()
 
 
 @pytest.fixture

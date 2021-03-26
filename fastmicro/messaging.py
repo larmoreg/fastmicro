@@ -171,39 +171,44 @@ class RedisMessaging(Messaging):  # pragma: no cover
             self.loop = loop
         else:
             self.loop = asyncio.get_event_loop()
-        self.redis = None
+        self.pool = None
 
     async def connect(self) -> None:
-        if not self.redis:
-            self.redis = await aioredis.create_redis_pool(self.address, loop=self.loop, minsize=10)
+        self.pool = await aioredis.create_pool(self.address, loop=self.loop)
 
     async def cleanup(self) -> None:
-        if self.redis:
-            self.redis.close()
-            await self.redis.wait_closed()
+        assert self.pool
+        self.pool.close()
+        await self.pool.wait_closed()
 
     async def _topic_exists(self, topic_name: str) -> bool:
         try:
-            assert self.redis
-            await self.redis.xinfo_stream(topic_name)
+            assert self.pool
+            with await self.pool as connection:
+                redis = aioredis.Redis(connection)
+                await redis.xinfo_stream(topic_name)
         except aioredis.errors.ReplyError:
             return False
         return True
 
     async def _group_exists(self, topic_name: str, group_name: str) -> bool:
-        assert self.redis
-        groups_info = await self.redis.xinfo_groups(topic_name)
-        for group_info in groups_info:
-            if group_info[b"name"] == group_name.encode():
-                return True
-        return False
+        assert self.pool
+        with await self.pool as connection:
+            redis = aioredis.Redis(connection)
+            groups_info = await redis.xinfo_groups(topic_name)
+            for group_info in groups_info:
+                if group_info[b"name"] == group_name.encode():
+                    return True
+            return False
 
     async def _create_group(self, topic_name: str, group_name: str) -> None:
         if not await self._topic_exists(topic_name) or not await self._group_exists(
             topic_name, group_name
         ):
-            assert self.redis
-            await self.redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
+            assert self.pool
+            with await self.pool as connection:
+                redis = aioredis.Redis(connection)
+                await redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
 
     async def _prepare(self, topic_name: str, group_name: str) -> None:
         await self._create_group(topic_name, group_name)
@@ -211,23 +216,29 @@ class RedisMessaging(Messaging):  # pragma: no cover
     async def _receive(
         self, topic_name: str, group_name: str, user_name: str
     ) -> Tuple[bytes, bytes]:
-        assert self.redis
-        messages = await self.redis.xread_group(
-            group_name, user_name, [topic_name], latest_ids=[">"]
-        )
-        stream, message_id, message = messages[0]
-        return message_id, message[b"data"]
+        assert self.pool
+        with await self.pool as connection:
+            redis = aioredis.Redis(connection)
+            messages = await redis.xread_group(
+                group_name, user_name, [topic_name], latest_ids=[">"]
+            )
+            stream, message_id, message = messages[-1]
+            return message_id, message[b"data"]
 
     async def _ack(self, topic_name: str, group_name: str, id: bytes) -> None:
-        assert self.redis
-        await self.redis.xack(topic_name, group_name, id)
+        assert self.pool
+        with await self.pool as connection:
+            redis = aioredis.Redis(connection)
+            await redis.xack(topic_name, group_name, id)
 
     async def _nack(self, topic_name: str, group_name: str, id: bytes) -> None:
         pass
 
     async def _send(self, topic_name: str, serialized: bytes) -> None:
-        assert self.redis
-        await self.redis.xadd(topic_name, {"data": serialized})
+        assert self.pool
+        with await self.pool as connection:
+            redis = aioredis.Redis(connection)
+            await redis.xadd(topic_name, {"data": serialized})
 
 
 class PulsarMessaging(Messaging):  # pragma: no cover

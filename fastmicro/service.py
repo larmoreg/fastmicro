@@ -2,7 +2,7 @@ import asyncio
 import atexit
 import logging
 import signal
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict, Optional
 import uvloop
 
 from .entrypoint import AT, BT, Entrypoint
@@ -20,11 +20,14 @@ class Service:
         self,
         messaging: Messaging,
         name: str,
-        loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         self.messaging = messaging
         self.name = name
-        self.loop = loop
+        if loop:
+            self.loop = loop
+        else:
+            self.loop = asyncio.get_event_loop()
         self.entrypoints: Dict[str, Any] = dict()
 
     def entrypoint(

@@ -42,7 +42,7 @@ async def insult(user: User) -> Greeting:
     ...
 
 
-async def test():
+async def test() -> None:
     await messaging.connect()
 
     greg = User(name="Greg", delay=2)

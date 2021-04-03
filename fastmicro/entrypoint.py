@@ -68,8 +68,8 @@ class Entrypoint(Generic[AT, BT]):
 
     async def call(self, input_message: AT, mock: bool = False) -> BT:
         if mock:
-            await self.messaging._prepare(self.topic.name, self.name)
-        await self.messaging._prepare(self.reply_topic.name, self.name)
+            await self.messaging._subscribe(self.topic.name, self.name)
+        await self.messaging._subscribe(self.reply_topic.name, self.name)
 
         logger.debug(f"Calling: {input_message}")
         input_header = await self.messaging.send(self.topic, input_message)

@@ -17,8 +17,8 @@ async def test_service_process(
     entrypoint: Entrypoint[User, Greeting],
 ) -> None:
     name = service.name + "_" + entrypoint.callback.__name__
-    await messaging._prepare(user_topic.name, name)
-    await messaging._prepare(greeting_topic.name, name)
+    await messaging._subscribe(user_topic.name, name)
+    await messaging._subscribe(greeting_topic.name, name)
 
     input_message = User(name="Greg")
     input_header = await messaging.send(user_topic, input_message)

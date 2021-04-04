@@ -18,7 +18,9 @@ from typing import (
 )
 from uuid import uuid4
 
+import aiokafka
 import aioredis
+import pulsar
 import pydantic
 
 from .serializer import Serializer, MsgpackSerializer
@@ -180,6 +182,135 @@ class MemoryMessaging(Messaging):
         queue = await self._get_queue(topic_name)
         serialized = await self.serializer.serialize(header.dict())
         await queue.put(serialized)
+
+
+class KafkaHeader(Header):
+    partition: Optional[int]
+    offset: Optional[int]
+
+
+class KafkaMessaging(Messaging):  # pragma: no cover
+    def __init__(
+        self,
+        serializer: Type[Serializer] = MsgpackSerializer,
+        bootstrap_servers: str = "localhost:9092",
+    ) -> None:
+        super().__init__(serializer=serializer)
+        self.bootstrap_servers = os.getenv("BOOTSTRAP_SERVERS", bootstrap_servers)
+        self.consumers: Dict[Tuple[str, str], aiokafka.AIOKafkaConsumer] = dict()
+        self.producers: Dict[str, aiokafka.AIOKafkaProducer] = dict()
+
+    async def cleanup(self) -> None:
+        for consumer in self.consumers.values():
+            await consumer.stop()
+        for producer in self.producers.values():
+            await producer.stop()
+
+    async def _get_consumer(self, topic_name: str, group_name: str) -> aiokafka.AIOKafkaConsumer:
+        key = topic_name, group_name
+        if key not in self.consumers:
+            consumer = aiokafka.AIOKafkaConsumer(
+                topic_name,
+                bootstrap_servers=self.bootstrap_servers,
+                group_id=group_name,
+                enable_auto_commit=False,
+                auto_offset_reset="latest",
+            )
+            await consumer.start()
+            self.consumers[key] = consumer
+        return self.consumers[key]
+
+    async def _get_producer(self, topic_name: str) -> aiokafka.AIOKafkaProducer:
+        if topic_name not in self.producers:
+            producer = aiokafka.AIOKafkaProducer(bootstrap_servers=self.bootstrap_servers)
+            await producer.start()
+            self.producers[topic_name] = producer
+        return self.producers[topic_name]
+
+    async def _subscribe(self, topic_name: str, group_name: str) -> None:
+        await self._get_consumer(topic_name, group_name)
+
+    async def _receive(self, topic_name: str, group_name: str, user_name: str) -> KafkaHeader:
+        consumer = await self._get_consumer(topic_name, group_name)
+        message = await consumer.getone()
+        data = await self.serializer.deserialize(message.value)
+
+        header = KafkaHeader(**data)
+        header.partition = message.partition
+        header.offset = message.offset
+        return header
+
+    async def _ack(self, topic_name: str, group_name: str, header: KafkaHeader) -> None:
+        consumer = await self._get_consumer(topic_name, group_name)
+        tp = aiokafka.TopicPartition(topic_name, header.partition)
+        assert header.offset
+        await consumer.commit({tp: header.offset + 1})
+
+    async def _nack(self, topic_name: str, group_name: str, header: KafkaHeader) -> None:
+        pass
+
+    async def _send(self, topic_name: str, header: KafkaHeader) -> None:
+        producer = await self._get_producer(topic_name)
+        serialized = await self.serializer.serialize(header.dict())
+        await producer.send_and_wait(topic_name, serialized)
+
+
+class PulsarHeader(Header):
+    message_id: Optional[bytes]
+
+
+class PulsarMessaging(Messaging):  # pragma: no cover
+    def __init__(
+        self,
+        serializer: Type[Serializer] = MsgpackSerializer,
+        service_url: str = "pulsar://localhost:6650",
+    ) -> None:
+        super().__init__(serializer=serializer)
+        service_url = os.getenv("SERVICE_URL", service_url)
+        self.client = pulsar.Client(service_url)
+        self.consumers: Dict[Tuple[str, str], pulsar.Consumer] = dict()
+        self.producers: Dict[str, pulsar.Producer] = dict()
+
+    async def cleanup(self) -> None:
+        self.client.close()
+
+    async def _get_consumer(self, topic_name: str, group_name: str) -> pulsar.Consumer:
+        key = topic_name, group_name
+        if key not in self.consumers:
+            self.consumers[key] = self.client.subscribe(topic_name, group_name)
+        return self.consumers[key]
+
+    async def _get_producer(self, topic_name: str) -> pulsar.Producer:
+        if topic_name not in self.producers:
+            self.producers[topic_name] = self.client.create_producer(topic_name)
+        return self.producers[topic_name]
+
+    async def _subscribe(self, topic_name: str, group_name: str) -> None:
+        await self._get_consumer(topic_name, group_name)
+
+    async def _receive(self, topic_name: str, group_name: str, user_name: str) -> PulsarHeader:
+        consumer = await self._get_consumer(topic_name, group_name)
+        message = consumer.receive()
+        data = await self.serializer.deserialize(message.data())
+
+        header = PulsarHeader(**data)
+        header.message_id = message.message_id()
+        return header
+
+    async def _ack(self, topic_name: str, group_name: str, header: PulsarHeader) -> None:
+        temp = pulsar.MessageId.deserialize(header.message_id)
+        consumer = await self._get_consumer(topic_name, group_name)
+        consumer.acknowledge(temp)
+
+    async def _nack(self, topic_name: str, group_name: str, header: PulsarHeader) -> None:
+        temp = pulsar.MessageId.deserialize(header.message_id)
+        consumer = await self._get_consumer(topic_name, group_name)
+        consumer.negative_acknowledge(temp)
+
+    async def _send(self, topic_name: str, header: PulsarHeader) -> None:
+        producer = await self._get_producer(topic_name)
+        serialized = await self.serializer.serialize(header.dict())
+        producer.send(serialized)
 
 
 class RedisHeader(Header):

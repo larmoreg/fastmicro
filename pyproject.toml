@@ -6,9 +6,11 @@ authors = ["larmoreg <larmoreg@gmail.com>"]
 license = "MIT License"
 
 [tool.poetry.dependencies]
+aiokafka = "^0.7.0"
 aioredis = "^1.3.1"
 msgpack = "^1.0.2"
 mypy = "^0.812"
+pulsar-client = "^2.7.1"
 pydantic = "^1.7.3"
 python = "^3.8"
 uvloop = "^0.15.2"

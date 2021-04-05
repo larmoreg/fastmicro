@@ -194,11 +194,17 @@ class KafkaMessaging(Messaging):  # pragma: no cover
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
         bootstrap_servers: str = "localhost:9092",
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         super().__init__(serializer=serializer)
         self.bootstrap_servers = os.getenv("BOOTSTRAP_SERVERS", bootstrap_servers)
+        if loop:
+            self.loop = loop
+        else:
+            self.loop = asyncio.get_event_loop()
         self.consumers: Dict[Tuple[str, str], aiokafka.AIOKafkaConsumer] = dict()
         self.producers: Dict[str, aiokafka.AIOKafkaProducer] = dict()
+        loop: Optional[asyncio.AbstractEventLoop] = None,
 
     async def cleanup(self) -> None:
         for consumer in self.consumers.values():
@@ -212,6 +218,7 @@ class KafkaMessaging(Messaging):  # pragma: no cover
             consumer = aiokafka.AIOKafkaConsumer(
                 topic_name,
                 bootstrap_servers=self.bootstrap_servers,
+                loop=self.loop,
                 group_id=group_name,
                 enable_auto_commit=False,
                 auto_offset_reset="latest",
@@ -222,7 +229,9 @@ class KafkaMessaging(Messaging):  # pragma: no cover
 
     async def _get_producer(self, topic_name: str) -> aiokafka.AIOKafkaProducer:
         if topic_name not in self.producers:
-            producer = aiokafka.AIOKafkaProducer(bootstrap_servers=self.bootstrap_servers)
+            producer = aiokafka.AIOKafkaProducer(
+                bootstrap_servers=self.bootstrap_servers, loop=self.loop
+            )
             await producer.start()
             self.producers[topic_name] = producer
         return self.producers[topic_name]
@@ -377,9 +386,10 @@ class RedisMessaging(Messaging):  # pragma: no cover
         with await self.pool as connection:
             redis = aioredis.Redis(connection)
             messages = await redis.xread_group(
-                group_name, consumer_name, [topic_name], latest_ids=[">"]
+                group_name, consumer_name, [topic_name], count=1, latest_ids=[">"]
             )
-            stream, message_id, message = messages[-1]
+            assert len(messages) == 1
+            stream, message_id, message = messages[0]
             data = await self.serializer.deserialize(message[b"data"])
 
             header = RedisHeader(**data)

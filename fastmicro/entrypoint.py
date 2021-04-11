@@ -45,18 +45,23 @@ class Entrypoint(Generic[AT, BT]):
             self.task.cancel()
             await self.task
 
-    async def process(self) -> None:
+    async def process(self, mock: bool = False) -> None:
         # TODO: add batch processing?
-        async with self.messaging.receive(
-            self.topic, self.name, self.consumer_name
-        ) as input_header:
-            input_message = cast(AT, input_header.message)
-            logger.debug(f"Processing: {input_message}")
-            output_message = await self.callback(input_message)
-            logger.debug(f"Result: {output_message}")
-            output_header = Header(parent=input_header.uuid, message=output_message)
+        try:
+            async with self.messaging.receive(
+                self.topic, self.name, self.consumer_name
+            ) as input_header:
+                input_message = cast(AT, input_header.message)
+                logger.debug(f"Processing: {input_message}")
+                output_message = await self.callback(input_message)
+                logger.debug(f"Result: {output_message}")
+                output_header = Header(parent=input_header.uuid, message=output_message)
 
-        await self.messaging.send(self.reply_topic, output_header)
+            await self.messaging.send(self.reply_topic, output_header)
+        except Exception as e:
+            logger.exception("Processing failed")
+            if mock:
+                raise e
 
     async def process_loop(self) -> None:
         while True:
@@ -75,7 +80,10 @@ class Entrypoint(Generic[AT, BT]):
         input_header = await self.messaging.send(self.topic, input_message)
 
         if mock:
-            await self.process()
+            try:
+                await self.process(mock=mock)
+            except Exception as e:
+                raise e
 
         while True:
             async with self.messaging.receive(

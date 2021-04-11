@@ -78,11 +78,10 @@ class Messaging(abc.ABC):
 
             logger.debug(f"Acking {header.uuid}")
             await self._ack(topic.name, group_name, header)
-        except Exception:
-            logger.exception("Processing failed")
-
+        except Exception as e:
             logger.debug(f"Nacking {header.uuid}")
             await self._nack(topic.name, group_name, header)
+            raise e
 
     async def send(self, topic: Topic[T], message: Union[Header, Any]) -> Header:
         if isinstance(message, Header):
@@ -204,7 +203,6 @@ class KafkaMessaging(Messaging):  # pragma: no cover
             self.loop = asyncio.get_event_loop()
         self.consumers: Dict[Tuple[str, str], aiokafka.AIOKafkaConsumer] = dict()
         self.producers: Dict[str, aiokafka.AIOKafkaProducer] = dict()
-        loop: Optional[asyncio.AbstractEventLoop] = None,
 
     async def cleanup(self) -> None:
         for consumer in self.consumers.values():

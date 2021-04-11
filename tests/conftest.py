@@ -47,13 +47,22 @@ def greeting_topic() -> Topic[Greeting]:
     return Topic("greeting", Greeting)
 
 
-@pytest.fixture
-async def entrypoint(
+def get_entrypoint(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
     async def greet(user: User) -> Greeting:
         await asyncio.sleep(user.delay)
         return Greeting(name=user.name, greeting=f"Hello, {user.name}!")
+
+    return greet
+
+
+def get_invalid(
+    service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
+) -> Entrypoint[User, Greeting]:
+    @service.entrypoint(user_topic, greeting_topic)
+    async def greet(user: User) -> Greeting:
+        raise RuntimeError("Test")
 
     return greet

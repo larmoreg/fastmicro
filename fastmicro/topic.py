@@ -1,18 +1,21 @@
-from typing import Any, Generic, Optional, Type, TypeVar
+import logging
+from typing import Generic, Optional, Type, TypeVar
 from uuid import UUID
 
 import pydantic
 
 from .serializer import Serializer, MsgpackSerializer
 
+logger = logging.getLogger(__name__)
+
 T = TypeVar("T", bound=pydantic.BaseModel)
 
 
-class Header(pydantic.BaseModel):
+class Header(pydantic.BaseModel, Generic[T]):
     uuid: Optional[UUID]
     parent: Optional[UUID]
     data: Optional[bytes]
-    message: Optional[Any]
+    message: Optional[T]
 
 
 class Topic(Generic[T]):
@@ -23,7 +26,7 @@ class Topic(Generic[T]):
         self.schema = schema
         self.serializer = serializer()
 
-    async def serialize(self, message: Any) -> bytes:
+    async def serialize(self, message: T) -> bytes:
         return await self.serializer.serialize(message.dict())
 
     async def deserialize(self, serialized: bytes) -> T:

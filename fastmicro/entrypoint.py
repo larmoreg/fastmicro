@@ -48,10 +48,7 @@ class Entrypoint(Generic[AT, BT]):
             await self.task
 
     async def process(
-        self,
-        mock: bool = False,
-        batch_size: int = BATCH_SIZE,
-        timeout: float = TIMEOUT,
+        self, mock: bool = False, batch_size: int = BATCH_SIZE, timeout: float = TIMEOUT
     ) -> None:
         try:
             if batch_size:
@@ -73,15 +70,15 @@ class Entrypoint(Generic[AT, BT]):
                     output_headers = list()
                     for input_header, output_message in zip(input_headers, output_messages):
                         logger.debug(f"Result: {output_message}")
-                        output_header = Header(parent=input_header.uuid, message=output_message)
+                        output_header = self.messaging.header_type(
+                            parent=input_header.uuid, message=output_message
+                        )
                         output_headers.append(output_header)
 
                     await self.messaging.send_batch(self.reply_topic, output_headers)
             else:
                 async with self.messaging.receive(
-                    self.topic,
-                    self.name,
-                    self.consumer_name,
+                    self.topic, self.name, self.consumer_name
                 ) as input_header:
                     input_message = cast(AT, input_header.message)
                     logger.debug(f"Processing: {input_message}")
@@ -89,7 +86,9 @@ class Entrypoint(Generic[AT, BT]):
                     output_message = await self.callback(input_message)
 
                     logger.debug(f"Result: {output_message}")
-                    output_header = Header(parent=input_header.uuid, message=output_message)
+                    output_header = self.messaging.header_type(
+                        parent=input_header.uuid, message=output_message
+                    )
 
                     await self.messaging.send(self.reply_topic, output_header)
         except Exception as e:
@@ -105,11 +104,7 @@ class Entrypoint(Generic[AT, BT]):
     def _is_reply(input_header: Header, output_header: Header) -> bool:
         return output_header.parent == input_header.uuid
 
-    async def call(
-        self,
-        input_message: AT,
-        mock: bool = False,
-    ) -> BT:
+    async def call(self, input_message: AT, mock: bool = False) -> BT:
         if mock:
             await self.messaging._subscribe(self.topic.name, self.name)
         await self.messaging._subscribe(self.reply_topic.name, self.name)

@@ -3,7 +3,7 @@ import pytest
 from fastmicro.entrypoint import Entrypoint
 from fastmicro.messaging import Messaging
 from fastmicro.service import Service
-from fastmicro.topic import Header, Topic
+from fastmicro.topic import Topic
 
 from .conftest import User, Greeting
 

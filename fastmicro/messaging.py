@@ -4,14 +4,12 @@ from contextlib import asynccontextmanager
 import logging
 import os
 from typing import (
-    Any,
     AsyncIterator,
     Dict,
     Generic,
     List,
     Optional,
     Set,
-    Sequence,
     Tuple,
     Type,
     TypeVar,
@@ -30,10 +28,15 @@ from .topic import Header, Topic
 
 logger = logging.getLogger(__name__)
 
+HT = TypeVar("HT", bound=Header)
 T = TypeVar("T", bound=pydantic.BaseModel)
 
 
-class Messaging(abc.ABC):
+class Messaging(abc.ABC, Generic[HT]):
+    @property
+    def header_type(self) -> Type[HT]:
+        raise NotImplementedError
+
     def __init__(self, serializer: Type[Serializer] = MsgpackSerializer):
         self.serializer = serializer()
 
@@ -47,12 +50,7 @@ class Messaging(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def _receive(
-        self,
-        topic_name: str,
-        group_name: str,
-        consumer_name: str,
-    ) -> Any:  # FIXME: Any should be Header but it breaks mypy
+    async def _receive(self, topic_name: str, group_name: str, consumer_name: str) -> HT:
         raise NotImplementedError
 
     async def _receive_batch(
@@ -62,41 +60,38 @@ class Messaging(abc.ABC):
         consumer_name: str,
         batch_size: int,
         timeout: float,
-    ) -> List[Header]:
+    ) -> List[HT]:
         tasks = [self._receive(topic_name, group_name, consumer_name) for i in range(batch_size)]
         return await asyncio.gather(*tasks)
 
     @abc.abstractmethod
-    async def _ack(self, topic_name: str, group_name: str, header: Any) -> None:
+    async def _ack(self, topic_name: str, group_name: str, header: HT) -> None:
         raise NotImplementedError
 
-    async def _ack_batch(self, topic_name: str, group_name: str, headers: List[Header]) -> None:
+    async def _ack_batch(self, topic_name: str, group_name: str, headers: List[HT]) -> None:
         tasks = [self._ack(topic_name, group_name, header) for header in headers]
         await asyncio.gather(*tasks)
 
     @abc.abstractmethod
-    async def _nack(self, topic_name: str, group_name: str, header: Any) -> None:
+    async def _nack(self, topic_name: str, group_name: str, header: HT) -> None:
         raise NotImplementedError
 
-    async def _nack_batch(self, topic_name: str, group_name: str, headers: List[Header]) -> None:
+    async def _nack_batch(self, topic_name: str, group_name: str, headers: List[HT]) -> None:
         tasks = [self._nack(topic_name, group_name, header) for header in headers]
         await asyncio.gather(*tasks)
 
     @abc.abstractmethod
-    async def _send(self, topic_name: str, header: Any) -> None:
+    async def _send(self, topic_name: str, header: HT) -> None:
         raise NotImplementedError
 
-    async def _send_batch(self, topic_name: str, headers: List[Header]) -> None:
+    async def _send_batch(self, topic_name: str, headers: List[HT]) -> None:
         tasks = [self._send(topic_name, header) for header in headers]
         await asyncio.gather(*tasks)
 
     @asynccontextmanager
     async def receive(
-        self,
-        topic: Topic[T],
-        group_name: str,
-        consumer_name: str,
-    ) -> AsyncIterator[Header]:
+        self, topic: Topic[T], group_name: str, consumer_name: str
+    ) -> AsyncIterator[HT]:
         try:
             await self._subscribe(topic.name, group_name)
             header = await self._receive(topic.name, group_name, consumer_name)
@@ -121,7 +116,7 @@ class Messaging(abc.ABC):
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
         timeout: float = TIMEOUT,
-    ) -> AsyncIterator[List[Header]]:
+    ) -> AsyncIterator[List[HT]]:
         try:
             await self._subscribe(topic.name, group_name)
             headers = await self._receive_batch(
@@ -143,33 +138,30 @@ class Messaging(abc.ABC):
             await self._nack_batch(topic.name, group_name, headers)
             raise e
 
-    async def send(
-        self,
-        topic: Topic[T],
-        headers: Union[Header, Any],
-    ) -> Header:
-        header = headers
-        if not isinstance(header, Header):
-            header = Header(message=header)
+    async def send(self, topic: Topic[T], message: Union[HT, T]) -> HT:
+        if isinstance(message, self.header_type):
+            header = message
+        else:
+            header = self.header_type(message=message)
 
         header.uuid = uuid4()
+        assert header.message
         header.data = await topic.serialize(header.message)
 
         logger.debug(f"Sending {header.uuid}")
         await self._send(topic.name, header)
         return header
 
-    async def send_batch(
-        self,
-        topic: Topic[T],
-        headers: Sequence[Union[Header, Any]],
-    ) -> List[Header]:
+    async def send_batch(self, topic: Topic[T], messages: List[Union[HT, T]]) -> List[HT]:
         temp_headers = list()
-        for header in headers:
-            if not isinstance(header, Header):
-                header = Header(message=header)
+        for message in messages:
+            if isinstance(message, self.header_type):
+                header = message
+            else:
+                header = self.header_type(message=message)
 
             header.uuid = uuid4()
+            assert header.message
             header.data = await topic.serialize(header.message)
             temp_headers.append(header)
 
@@ -225,6 +217,8 @@ class MemoryHeader(Header):
 
 
 class MemoryMessaging(Messaging):
+    header_type = MemoryHeader
+
     def __init__(
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
@@ -241,12 +235,7 @@ class MemoryMessaging(Messaging):
                 self.queues[topic_name] = Queue(self.loop)
             return self.queues[topic_name]
 
-    async def _receive(
-        self,
-        topic_name: str,
-        group_name: str,
-        consumer_name: str,
-    ) -> MemoryHeader:
+    async def _receive(self, topic_name: str, group_name: str, consumer_name: str) -> MemoryHeader:
         queue = await self._get_queue(topic_name)
 
         message_id, serialized = await queue.get()
@@ -257,23 +246,13 @@ class MemoryMessaging(Messaging):
 
         return header
 
-    async def _ack(
-        self,
-        topic_name: str,
-        group_name: str,
-        header: MemoryHeader,
-    ) -> None:
+    async def _ack(self, topic_name: str, group_name: str, header: MemoryHeader) -> None:
         queue = await self._get_queue(topic_name)
 
         assert header.message_id
         await queue.ack(header.message_id)
 
-    async def _nack(
-        self,
-        topic_name: str,
-        group_name: str,
-        header: MemoryHeader,
-    ) -> None:
+    async def _nack(self, topic_name: str, group_name: str, header: MemoryHeader) -> None:
         queue = await self._get_queue(topic_name)
 
         assert header.message_id

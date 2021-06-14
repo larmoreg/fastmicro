@@ -17,10 +17,7 @@ class Header(pydantic.BaseModel):
 
 class Topic(Generic[T]):
     def __init__(
-        self,
-        name: str,
-        schema: Type[T],
-        serializer: Type[Serializer] = MsgpackSerializer,
+        self, name: str, schema: Type[T], serializer: Type[Serializer] = MsgpackSerializer
     ):
         self.name = name
         self.schema = schema

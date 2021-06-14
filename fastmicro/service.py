@@ -31,9 +31,7 @@ class Service:
         self.entrypoints: Dict[str, Any] = dict()
 
     def entrypoint(
-        self,
-        topic: Topic[AT],
-        reply_topic: Topic[BT],
+        self, topic: Topic[AT], reply_topic: Topic[BT]
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
             name = callback.__name__
@@ -53,23 +51,23 @@ class Service:
 
         return _entrypoint
 
-    async def _run(self) -> None:
+    async def _start(self) -> None:
         await self.messaging.connect()
 
-        for entrypoint in self.entrypoints.values():
-            await entrypoint.run()
+        tasks = [entrypoint.start() for entrypoint in self.entrypoints.values()]
+        await asyncio.gather(*tasks)
 
     def run(self) -> None:
-        self.loop.run_until_complete(self._run())
-        atexit.register(self.kill)
+        self.loop.run_until_complete(self._start())
+        atexit.register(self.stop)
         self.loop.run_forever()
 
-    def kill(self) -> None:
-        self.loop.run_until_complete(self.stop())
-        self.loop.close()
-
-    async def stop(self) -> None:
-        for entrypoint in self.entrypoints.values():
-            await entrypoint.stop()
+    async def _stop(self) -> None:
+        tasks = [entrypoint.stop() for entrypoint in self.entrypoints.values()]
+        await asyncio.gather(*tasks)
 
         await self.messaging.cleanup()
+
+    def stop(self) -> None:
+        self.loop.run_until_complete(self._stop())
+        self.loop.close()

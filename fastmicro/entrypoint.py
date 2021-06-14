@@ -34,7 +34,7 @@ class Entrypoint(Generic[AT, BT]):
         self.loop = loop
         self.task: Optional[asyncio.Task[None]] = None
 
-    async def run(self) -> None:
+    async def start(self) -> None:
         if not self.task:
             logger.debug(f"Starting {self.name}")
             self.task = self.loop.create_task(self.process_loop(), name=self.name)

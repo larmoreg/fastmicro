@@ -26,10 +26,7 @@ class MsgpackSerializer(Serializer):
     @staticmethod
     def encode(obj: Any) -> Any:
         if isinstance(obj, UUID):
-            obj = {
-                b"__type__": b"uuid.UUID",
-                b"__value__": str(obj).encode(),
-            }
+            obj = {b"__type__": b"uuid.UUID", b"__value__": str(obj).encode()}
         return obj
 
     async def serialize(self, data: Dict[Any, Any]) -> bytes:

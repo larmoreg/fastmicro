@@ -32,10 +32,7 @@ T = TypeVar("T", bound=pydantic.BaseModel)
 
 
 class Messaging(abc.ABC):
-    def __init__(
-        self,
-        serializer: Type[Serializer] = MsgpackSerializer,
-    ):
+    def __init__(self, serializer: Type[Serializer] = MsgpackSerializer):
         self.serializer = serializer()
 
     async def connect(self) -> None:
@@ -188,7 +185,7 @@ class KafkaHeader(Header):
     offset: Optional[int]
 
 
-class KafkaMessaging(Messaging):  # pragma: no cover
+class KafkaMessaging(Messaging):
     def __init__(
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
@@ -205,10 +202,11 @@ class KafkaMessaging(Messaging):  # pragma: no cover
         self.producers: Dict[str, aiokafka.AIOKafkaProducer] = dict()
 
     async def cleanup(self) -> None:
-        for consumer in self.consumers.values():
-            await consumer.stop()
-        for producer in self.producers.values():
-            await producer.stop()
+        tasks = [consumer.stop() for consumer in self.consumers.values()]
+        await asyncio.gather(*tasks)
+
+        tasks = [producer.stop() for producer in self.producers.values()]
+        await asyncio.gather(*tasks)
 
     async def _get_consumer(self, topic_name: str, group_name: str) -> aiokafka.AIOKafkaConsumer:
         key = topic_name, group_name
@@ -237,7 +235,7 @@ class KafkaMessaging(Messaging):  # pragma: no cover
     async def _subscribe(self, topic_name: str, group_name: str) -> None:
         await self._get_consumer(topic_name, group_name)
 
-    async def _receive(self, topic_name: str, group_name: str, user_name: str) -> KafkaHeader:
+    async def _receive(self, topic_name: str, group_name: str, consumer_name: str) -> KafkaHeader:
         consumer = await self._get_consumer(topic_name, group_name)
         message = await consumer.getone()
         data = await self.serializer.deserialize(message.value)
@@ -266,7 +264,7 @@ class PulsarHeader(Header):
     message_id: Optional[bytes]
 
 
-class PulsarMessaging(Messaging):  # pragma: no cover
+class PulsarMessaging(Messaging):
     def __init__(
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
@@ -295,7 +293,7 @@ class PulsarMessaging(Messaging):  # pragma: no cover
     async def _subscribe(self, topic_name: str, group_name: str) -> None:
         await self._get_consumer(topic_name, group_name)
 
-    async def _receive(self, topic_name: str, group_name: str, user_name: str) -> PulsarHeader:
+    async def _receive(self, topic_name: str, group_name: str, consumer_name: str) -> PulsarHeader:
         consumer = await self._get_consumer(topic_name, group_name)
         message = consumer.receive()
         data = await self.serializer.deserialize(message.data())
@@ -324,7 +322,7 @@ class RedisHeader(Header):
     message_id: Optional[bytes]
 
 
-class RedisMessaging(Messaging):  # pragma: no cover
+class RedisMessaging(Messaging):
     def __init__(
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
@@ -361,10 +359,9 @@ class RedisMessaging(Messaging):  # pragma: no cover
         assert self.pool
         with await self.pool as connection:
             redis = aioredis.Redis(connection)
-            groups_info = await redis.xinfo_groups(topic_name)
-            for group_info in groups_info:
-                if group_info[b"name"] == group_name.encode():
-                    return True
+            group_infos = await redis.xinfo_groups(topic_name)
+            if any(group_info[b"name"] == group_name.encode() for group_info in group_infos):
+                return True
             return False
 
     async def _create_group(self, topic_name: str, group_name: str) -> None:

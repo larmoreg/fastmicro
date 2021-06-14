@@ -20,7 +20,9 @@ class Greeting(pydantic.BaseModel):
 
 
 @pytest.fixture
-async def messaging(event_loop: asyncio.AbstractEventLoop,) -> AsyncGenerator[Messaging, None]:
+async def messaging(
+    event_loop: asyncio.AbstractEventLoop,
+) -> AsyncGenerator[Messaging, None]:
     _messaging = MemoryMessaging(loop=event_loop)
     await _messaging.connect()
     yield _messaging
@@ -42,7 +44,8 @@ def greeting_topic() -> Topic[Greeting]:
     return Topic("greeting", Greeting)
 
 
-def get_entrypoint(
+@pytest.fixture
+def entrypoint(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
@@ -53,7 +56,8 @@ def get_entrypoint(
     return greet
 
 
-def get_invalid(
+@pytest.fixture
+def invalid(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)

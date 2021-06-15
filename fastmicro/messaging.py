@@ -2,7 +2,6 @@ import abc
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-import os
 from typing import (
     AsyncIterator,
     Dict,
@@ -22,7 +21,13 @@ import aioredis
 import pulsar
 import pydantic
 
-from .env import BATCH_SIZE, TIMEOUT
+from .env import (
+    BATCH_SIZE,
+    TIMEOUT,
+    KAFKA_BOOTSTRAP_SERVERS,
+    PULSAR_SERVICE_URL,
+    REDIS_ADDRESS,
+)
 from .serializer import Serializer, MsgpackSerializer
 from .topic import Header, Topic
 
@@ -274,11 +279,11 @@ class KafkaMessaging(Messaging):
     def __init__(
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
-        bootstrap_servers: str = "localhost:9092",
+        bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         super().__init__(serializer=serializer)
-        self.bootstrap_servers = os.getenv("BOOTSTRAP_SERVERS", bootstrap_servers)
+        self.bootstrap_servers = bootstrap_servers
         if loop:
             self.loop = loop
         else:
@@ -353,10 +358,9 @@ class PulsarMessaging(Messaging):
     def __init__(
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
-        service_url: str = "pulsar://localhost:6650",
+        service_url: str = PULSAR_SERVICE_URL,
     ) -> None:
         super().__init__(serializer=serializer)
-        service_url = os.getenv("SERVICE_URL", service_url)
         self.client = pulsar.Client(service_url)
         self.consumers: Dict[Tuple[str, str], pulsar.Consumer] = dict()
         self.producers: Dict[str, pulsar.Producer] = dict()
@@ -411,11 +415,11 @@ class RedisMessaging(Messaging):
     def __init__(
         self,
         serializer: Type[Serializer] = MsgpackSerializer,
-        address: str = "redis://localhost:6379",
+        address: str = REDIS_ADDRESS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         super().__init__(serializer=serializer)
-        self.address = os.getenv("ADDRESS", address)
+        self.address = address
         if loop:
             self.loop = loop
         else:

@@ -6,9 +6,10 @@ import logging.config
 
 import pydantic
 
-from fastmicro.messaging import RedisMessaging
+from fastmicro.messaging.redis import RedisMessaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
+from fastmicro.types import T
 
 logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class Greeting(pydantic.BaseModel):
     greeting: str
 
 
-messaging = RedisMessaging()
+messaging: RedisMessaging[T] = RedisMessaging()  # type: ignore
 service = Service(messaging, "test")
 greet_user_topic = Topic("greet_user", User)
 greeting_topic = Topic("greeting", Greeting)

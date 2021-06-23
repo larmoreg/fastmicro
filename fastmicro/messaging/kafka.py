@@ -13,6 +13,7 @@ from typing import (
 from uuid import uuid4
 
 import aiokafka
+from aiokafka.errors import IllegalOperation
 
 from fastmicro.env import (
     BATCH_SIZE,
@@ -66,6 +67,7 @@ class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
                 group_id=group_name,
                 enable_auto_commit=False,
                 auto_offset_reset="latest",
+                isolation_level="read_committed",
             )
             await consumer.start()
             self.consumers[key] = consumer
@@ -106,11 +108,10 @@ class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
         timeout: float = TIMEOUT,
     ) -> List[KafkaHeader[T]]:
         consumer = await self._get_consumer(topic_name, group_name)
-        temp = await consumer.getmany(timeout_ms=timeout * 1000, max_records=batch_size)
-        messages = temp[topic_name]
+        messages = await consumer.getmany(timeout_ms=timeout * 1000, max_records=batch_size)
 
         headers = list()
-        for message in messages:
+        for tp, message in messages.items():
             data = await self.serializer.deserialize(message.value)
 
             header: KafkaHeader[T] = KafkaHeader(**data)
@@ -120,15 +121,36 @@ class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
         return headers
 
     async def _ack(self, topic_name: str, group_name: str, header: KafkaHeader[T]) -> None:
-        consumer = await self._get_consumer(topic_name, group_name)
         tp = aiokafka.TopicPartition(topic_name, header.partition)
-        assert header.offset
-        await consumer.commit({tp: header.offset + 1})
+        assert header.offset is not None
+
+        try:
+            producer = await self._get_producer(topic_name)
+            await producer.send_offsets_to_transaction({tp: header.offset + 1}, group_name)
+        except IllegalOperation:
+            consumer = await self._get_consumer(topic_name, group_name)
+            await consumer.commit({tp: header.offset + 1})
 
     async def _ack_batch(
         self, topic_name: str, group_name: str, headers: List[KafkaHeader[T]]
     ) -> None:
-        await self._ack(topic_name, group_name, headers[-1])
+        partitions = set(map(lambda x: x.partition, headers))
+        offsets = {
+            aiokafka.TopicPartition(topic_name, partition): max(
+                map(
+                    lambda x: x.offset + 1,  # type: ignore
+                    filter(lambda x: x.partition == partition, headers),
+                )
+            )
+            for partition in partitions
+        }
+
+        try:
+            producer = await self._get_producer(topic_name)
+            await producer.send_offsets_to_transaction(offsets, group_name)
+        except IllegalOperation:
+            consumer = await self._get_consumer(topic_name, group_name)
+            await consumer.commit(offsets)
 
     async def _nack(self, topic_name: str, group_name: str, header: KafkaHeader[T]) -> None:
         pass

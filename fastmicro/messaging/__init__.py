@@ -145,8 +145,7 @@ class Messaging(Generic[HT], abc.ABC):
         header.message = None
 
         logger.debug(f"Sending {header.uuid}")
-        async with self.transaction(topic.name):
-            await self._send(topic.name, header)
+        await self._send(topic.name, header)
         return header
 
     async def send_batch(self, topic: Topic[T], messages: Sequence[Union[HT, T]]) -> List[HT]:
@@ -165,6 +164,5 @@ class Messaging(Generic[HT], abc.ABC):
             headers.append(header)
             logger.debug(f"Sending {header.uuid}")
 
-        async with self.transaction(topic.name):
-            await self._send_batch(topic.name, headers)
+        await self._send_batch(topic.name, headers)
         return headers

@@ -1,3 +1,5 @@
+import aiokafka
+from aiokafka.errors import IllegalOperation
 import asyncio
 from contextlib import asynccontextmanager
 import logging
@@ -11,9 +13,6 @@ from typing import (
     Type,
 )
 from uuid import uuid4
-
-import aiokafka
-from aiokafka.errors import IllegalOperation
 
 from fastmicro.env import (
     BATCH_SIZE,
@@ -108,7 +107,7 @@ class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
         timeout: float = TIMEOUT,
     ) -> List[KafkaHeader[T]]:
         consumer = await self._get_consumer(topic_name, group_name)
-        temp = await consumer.getmany(timeout_ms=timeout * 1000, max_records=batch_size)
+        temp = await consumer.getmany(timeout_ms=int(timeout * 1000), max_records=batch_size)
 
         headers = list()
         for tp, messages in temp.items():

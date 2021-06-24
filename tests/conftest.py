@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import logging.config
 import pydantic
 import pytest
 from typing import AsyncGenerator
@@ -12,6 +13,7 @@ from fastmicro.service import Service
 from fastmicro.topic import Topic
 from fastmicro.types import HT
 
+logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 

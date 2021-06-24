@@ -53,7 +53,10 @@ class Messaging(Generic[HT], abc.ABC):
         timeout: float = TIMEOUT,
     ) -> List[HT]:
         tasks = [self._receive(topic_name, group_name, consumer_name) for i in range(batch_size)]
-        return await asyncio.gather(*tasks)
+        done, pending = await asyncio.wait(tasks, timeout=timeout)
+        for task in pending:
+            task.cancel()
+        return [task.result() for task in done]
 
     @abc.abstractmethod
     async def _ack(self, topic_name: str, group_name: str, header: HT) -> None:

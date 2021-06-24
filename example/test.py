@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import logging.config
-
 import pydantic
 
 from fastmicro.messaging.redis import RedisMessaging

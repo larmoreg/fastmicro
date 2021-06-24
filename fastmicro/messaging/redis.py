@@ -1,14 +1,16 @@
+import aioredis
 import asyncio
 import logging
 from typing import (
     Generic,
+    List,
     Optional,
     Type,
 )
 
-import aioredis
-
 from fastmicro.env import (
+    BATCH_SIZE,
+    TIMEOUT,
     REDIS_ADDRESS,
 )
 from fastmicro.messaging import Messaging
@@ -81,26 +83,58 @@ class RedisMessaging(Generic[T], Messaging[RedisHeader[T]]):
     async def _receive(
         self, topic_name: str, group_name: str, consumer_name: str
     ) -> RedisHeader[T]:
+        messages = await self._receive_batch(
+            topic_name, group_name, consumer_name, batch_size=1, timeout=0
+        )
+        return messages[0]
+
+    async def _receive_batch(
+        self,
+        topic_name: str,
+        group_name: str,
+        consumer_name: str,
+        batch_size: int = BATCH_SIZE,
+        timeout: float = TIMEOUT,
+    ) -> List[RedisHeader[T]]:
         assert self.pool
         with await self.pool as connection:
             redis = aioredis.Redis(connection)
-            messages = await redis.xread_group(
-                group_name, consumer_name, [topic_name], count=1, latest_ids=[">"]
+            temp = await redis.xread_group(
+                group_name,
+                consumer_name,
+                [topic_name],
+                timeout=int(timeout * 1000),
+                count=batch_size,
+                latest_ids=[">"],
             )
-            stream, message_id, message = messages[0]
-            data = await self.serializer.deserialize(message[b"data"])
 
-            header: RedisHeader[T] = RedisHeader(**data)
-            header.message_id = message_id
-            return header
+            headers = list()
+            for stream, message_id, message in temp:
+                data = await self.serializer.deserialize(message[b"data"])
+
+                header: RedisHeader[T] = RedisHeader(**data)
+                header.message_id = message_id
+                headers.append(header)
+            return headers
 
     async def _ack(self, topic_name: str, group_name: str, header: RedisHeader[T]) -> None:
+        await self._ack_batch(topic_name, group_name, [header])
+
+    async def _ack_batch(
+        self, topic_name: str, group_name: str, headers: List[RedisHeader[T]]
+    ) -> None:
         assert self.pool
         with await self.pool as connection:
             redis = aioredis.Redis(connection)
-            await redis.xack(topic_name, group_name, header.message_id)
+            message_ids = [header.message_id for header in headers]
+            await redis.xack(topic_name, group_name, *message_ids)
 
     async def _nack(self, topic_name: str, group_name: str, header: RedisHeader[T]) -> None:
+        pass
+
+    async def _nack_batch(
+        self, topic_name: str, group_name: str, headers: List[RedisHeader[T]]
+    ) -> None:
         pass
 
     async def _send(self, topic_name: str, header: RedisHeader[T]) -> None:

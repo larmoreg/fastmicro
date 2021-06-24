@@ -1,7 +1,6 @@
+import pydantic
 from typing import Generic, Optional, TypeVar
 from uuid import UUID
-
-import pydantic
 
 T = TypeVar("T", bound=pydantic.BaseModel)
 

@@ -117,20 +117,24 @@ class Messaging(Generic[HT], abc.ABC):
             headers = await self._receive_batch(
                 topic.name, group_name, consumer_name, batch_size, timeout
             )
-            for header in headers:
-                logger.debug(f"Received {header.uuid}")
-                header.message = await topic.deserialize(header.data)  # type: ignore
-                header.data = None
+            if headers:
+                for header in headers:
+                    logger.debug(f"Received {header.uuid}")
+                    header.message = await topic.deserialize(header.data)  # type: ignore
+                    header.data = None
 
-            yield headers
+                yield headers
 
-            for header in headers:
-                logger.debug(f"Acking {header.uuid}")
-            await self._ack_batch(topic.name, group_name, headers)
+                for header in headers:
+                    logger.debug(f"Acking {header.uuid}")
+                await self._ack_batch(topic.name, group_name, headers)
+            else:
+                yield headers
         except Exception as e:
-            for header in headers:
-                logger.debug(f"Nacking {header.uuid}")
-            await self._nack_batch(topic.name, group_name, headers)
+            if headers:
+                for header in headers:
+                    logger.debug(f"Nacking {header.uuid}")
+                await self._nack_batch(topic.name, group_name, headers)
             raise e
 
     async def send(self, topic: Topic[T], message: Union[HT, T]) -> HT:

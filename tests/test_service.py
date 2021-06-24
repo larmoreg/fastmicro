@@ -22,7 +22,8 @@ async def test_service_process(
     await messaging._subscribe(greeting_topic.name, name)
 
     input_message = User(name="Greg")
-    input_header = await messaging.send(user_topic, input_message)
+    async with messaging.transaction(user_topic.name):
+        input_header = await messaging.send(user_topic, input_message)
 
     await entrypoint.process(mock=True)
 
@@ -47,7 +48,8 @@ async def test_service_process_batch(
     await messaging._subscribe(greeting_topic.name, name)
 
     input_messages = [User(name="Greg", delay=2), User(name="Cara", delay=1)]
-    input_headers = await messaging.send_batch(user_topic, input_messages)
+    async with messaging.transaction(user_topic.name):
+        input_headers = await messaging.send_batch(user_topic, input_messages)
 
     await entrypoint.process(mock=True, batch_size=2)
 
@@ -74,7 +76,8 @@ async def test_service_exception(
     await messaging._subscribe(greeting_topic.name, name)
 
     input_message = User(name="Greg")
-    await messaging.send(user_topic, input_message)
+    async with messaging.transaction(user_topic.name):
+        await messaging.send(user_topic, input_message)
 
     with pytest.raises(RuntimeError) as excinfo:
         await invalid.process(mock=True)

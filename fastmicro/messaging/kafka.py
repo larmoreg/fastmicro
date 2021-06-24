@@ -108,16 +108,17 @@ class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
         timeout: float = TIMEOUT,
     ) -> List[KafkaHeader[T]]:
         consumer = await self._get_consumer(topic_name, group_name)
-        messages = await consumer.getmany(timeout_ms=timeout * 1000, max_records=batch_size)
+        temp = await consumer.getmany(timeout_ms=timeout * 1000, max_records=batch_size)
 
         headers = list()
-        for tp, message in messages.items():
-            data = await self.serializer.deserialize(message.value)
+        for tp, messages in temp.items():
+            for message in messages:
+                data = await self.serializer.deserialize(message.value)
 
-            header: KafkaHeader[T] = KafkaHeader(**data)
-            header.partition = message.partition
-            header.offset = message.offset
-            headers.append(header)
+                header: KafkaHeader[T] = KafkaHeader(**data)
+                header.partition = message.partition
+                header.offset = message.offset
+                headers.append(header)
         return headers
 
     async def _ack(self, topic_name: str, group_name: str, header: KafkaHeader[T]) -> None:

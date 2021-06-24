@@ -56,23 +56,24 @@ class Entrypoint(Generic[AT, BT]):
                         batch_size=batch_size,
                         timeout=timeout,
                     ) as input_headers:
-                        tasks = list()
-                        for input_header in input_headers:
-                            input_message = cast(AT, input_header.message)
-                            logger.debug(f"Processing: {input_message}")
-                            tasks.append(self.callback(input_message))
+                        if input_headers:
+                            tasks = list()
+                            for input_header in input_headers:
+                                input_message = cast(AT, input_header.message)
+                                logger.debug(f"Processing: {input_message}")
+                                tasks.append(self.callback(input_message))
 
-                        output_messages = await asyncio.gather(*tasks)
+                            output_messages = await asyncio.gather(*tasks)
 
-                        output_headers = list()
-                        for input_header, output_message in zip(input_headers, output_messages):
-                            logger.debug(f"Result: {output_message}")
-                            output_header = self.messaging.header_type(
-                                parent=input_header.uuid, message=output_message
-                            )
-                            output_headers.append(output_header)
+                            output_headers = list()
+                            for input_header, output_message in zip(input_headers, output_messages):
+                                logger.debug(f"Result: {output_message}")
+                                output_header = self.messaging.header_type(
+                                    parent=input_header.uuid, message=output_message
+                                )
+                                output_headers.append(output_header)
 
-                        await self.messaging.send_batch(self.reply_topic, output_headers)
+                            await self.messaging.send_batch(self.reply_topic, output_headers)
             else:
                 async with self.messaging.transaction(self.reply_topic.name):
                     async with self.messaging.receive(
@@ -164,17 +165,18 @@ class Entrypoint(Generic[AT, BT]):
                     batch_size=batch_size,
                     timeout=timeout,
                 ) as output_headers:
-                    for output_header in output_headers:
-                        for i in range(len(headers)):
-                            input_header = headers[i]
-                            if self._is_reply(input_header, output_header):
-                                assert output_header.message
-                                output_messages.append(output_header.message)
-                                break
-                        else:
-                            continue
+                    if output_headers:
+                        for output_header in output_headers:
+                            for i in range(len(headers)):
+                                input_header = headers[i]
+                                if self._is_reply(input_header, output_header):
+                                    assert output_header.message
+                                    output_messages.append(output_header.message)
+                                    break
+                            else:
+                                continue
 
-                        del headers[i]
+                            del headers[i]
 
             for output_message in output_messages:
                 logger.debug(f"Result: {output_message}")

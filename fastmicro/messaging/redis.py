@@ -39,43 +39,37 @@ class RedisMessaging(Generic[T], Messaging[RedisHeader[T]]):
             self.loop = loop
         else:
             self.loop = asyncio.get_event_loop()
-        self.pool = None
+        self.redis = None
 
     async def connect(self) -> None:
-        self.pool = await aioredis.create_pool(self.address, loop=self.loop)
+        self.redis = await aioredis.create_redis_pool(self.address, loop=self.loop)
 
     async def cleanup(self) -> None:
-        assert self.pool
-        self.pool.close()
-        await self.pool.wait_closed()
+        assert self.redis
+        self.redis.close()
+        await self.redis.wait_closed()
 
     async def _topic_exists(self, topic_name: str) -> bool:
         try:
-            assert self.pool
-            with await self.pool as connection:
-                redis = aioredis.Redis(connection)
-                await redis.xinfo_stream(topic_name)
+            assert self.redis
+            await self.redis.xinfo_stream(topic_name)
         except aioredis.errors.ReplyError:
             return False
         return True
 
     async def _group_exists(self, topic_name: str, group_name: str) -> bool:
-        assert self.pool
-        with await self.pool as connection:
-            redis = aioredis.Redis(connection)
-            group_infos = await redis.xinfo_groups(topic_name)
-            if any(group_info[b"name"] == group_name.encode() for group_info in group_infos):
-                return True
-            return False
+        assert self.redis
+        group_infos = await self.redis.xinfo_groups(topic_name)
+        if any(group_info[b"name"] == group_name.encode() for group_info in group_infos):
+            return True
+        return False
 
     async def _create_group(self, topic_name: str, group_name: str) -> None:
         if not await self._topic_exists(topic_name) or not await self._group_exists(
             topic_name, group_name
         ):
-            assert self.pool
-            with await self.pool as connection:
-                redis = aioredis.Redis(connection)
-                await redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
+            assert self.redis
+            await self.redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
 
     async def _subscribe(self, topic_name: str, group_name: str) -> None:
         await self._create_group(topic_name, group_name)
@@ -96,26 +90,24 @@ class RedisMessaging(Generic[T], Messaging[RedisHeader[T]]):
         batch_size: int = BATCH_SIZE,
         timeout: float = TIMEOUT,
     ) -> List[RedisHeader[T]]:
-        assert self.pool
-        with await self.pool as connection:
-            redis = aioredis.Redis(connection)
-            temp = await redis.xread_group(
-                group_name,
-                consumer_name,
-                [topic_name],
-                timeout=int(timeout * 1000),
-                count=batch_size,
-                latest_ids=[">"],
-            )
+        assert self.redis
+        temp = await self.redis.xread_group(
+            group_name,
+            consumer_name,
+            [topic_name],
+            timeout=int(timeout * 1000),
+            count=batch_size,
+            latest_ids=[">"],
+        )
 
-            headers = list()
-            for stream, message_id, message in temp:
-                data = await self.serializer.deserialize(message[b"data"])
+        headers = list()
+        for stream, message_id, message in temp:
+            data = await self.serializer.deserialize(message[b"data"])
 
-                header: RedisHeader[T] = RedisHeader(**data)
-                header.message_id = message_id
-                headers.append(header)
-            return headers
+            header: RedisHeader[T] = RedisHeader(**data)
+            header.message_id = message_id
+            headers.append(header)
+        return headers
 
     async def _ack(self, topic_name: str, group_name: str, header: RedisHeader[T]) -> None:
         await self._ack_batch(topic_name, group_name, [header])
@@ -123,11 +115,9 @@ class RedisMessaging(Generic[T], Messaging[RedisHeader[T]]):
     async def _ack_batch(
         self, topic_name: str, group_name: str, headers: List[RedisHeader[T]]
     ) -> None:
-        assert self.pool
-        with await self.pool as connection:
-            redis = aioredis.Redis(connection)
-            message_ids = [header.message_id for header in headers]
-            await redis.xack(topic_name, group_name, *message_ids)
+        assert self.redis
+        message_ids = [header.message_id for header in headers]
+        await self.redis.xack(topic_name, group_name, *message_ids)
 
     async def _nack(self, topic_name: str, group_name: str, header: RedisHeader[T]) -> None:
         pass
@@ -138,8 +128,6 @@ class RedisMessaging(Generic[T], Messaging[RedisHeader[T]]):
         pass
 
     async def _send(self, topic_name: str, header: RedisHeader[T]) -> None:
-        assert self.pool
-        with await self.pool as connection:
-            redis = aioredis.Redis(connection)
-            serialized = await self.serializer.serialize(header.dict())
-            await redis.xadd(topic_name, {"data": serialized})
+        assert self.redis
+        serialized = await self.serializer.serialize(header.dict())
+        await self.redis.xadd(topic_name, {"data": serialized})

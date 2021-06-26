@@ -145,7 +145,7 @@ class Entrypoint(Generic[AT, BT]):
                 except Exception as e:
                     raise e
 
-            input_message_uuids = [input_message.uuid for input_message in temp_input_messages]
+            input_message_uuids = set(input_message.uuid for input_message in temp_input_messages)
             while input_message_uuids:
                 async with self.messaging.receive_batch(
                     self.reply_topic,
@@ -156,11 +156,9 @@ class Entrypoint(Generic[AT, BT]):
                 ) as temp_output_messages:
                     if temp_output_messages:
                         for output_message in temp_output_messages:
-                            for i in range(len(input_message_uuids)):
-                                if output_message.parent == input_message_uuids[i]:
-                                    output_messages.append(output_message)
-                                    del input_message_uuids[i]
-                                    break
+                            if output_message.parent in input_message_uuids:
+                                input_message_uuids.remove(output_message.parent)
+                                output_messages.append(output_message)
 
         for output_message in output_messages:
             logger.debug(f"Result: {output_message}")

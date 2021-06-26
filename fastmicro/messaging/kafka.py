@@ -38,7 +38,7 @@ class Messaging(MessagingABC):
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__()
+        super().__init__(loop)
         self.bootstrap_servers = bootstrap_servers
         if loop:
             self.loop = loop
@@ -161,7 +161,7 @@ class Messaging(MessagingABC):
             await producer.send_and_wait(topic.name, serialized)
 
     @asynccontextmanager
-    async def transaction(self, topic_name) -> AsyncIterator:
+    async def transaction(self, topic_name: str) -> AsyncIterator[None]:
         producer = await self._get_producer(topic_name)
         async with producer.transaction():
             yield

@@ -24,7 +24,7 @@ T = TypeVar("T", bound=MessageABC)
 
 
 class MessagingABC(Generic[T], abc.ABC):
-    def __init__(self):
+    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         pass
 
     async def connect(self) -> None:
@@ -82,7 +82,7 @@ class MessagingABC(Generic[T], abc.ABC):
         await asyncio.gather(*tasks)
 
     @asynccontextmanager
-    async def transaction(self, topic_name: str) -> AsyncIterator:
+    async def transaction(self, topic_name: str) -> AsyncIterator[None]:
         yield
 
     @asynccontextmanager

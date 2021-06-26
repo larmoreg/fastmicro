@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Awaitable, Callable, Generic, List, Optional, TypeVar
+from typing import Awaitable, Callable, cast, Generic, List, Optional, TypeVar
 from uuid import uuid4
 
 from .env import BATCH_SIZE, TIMEOUT
@@ -116,7 +116,7 @@ class Entrypoint(Generic[AT, BT]):
                     break
 
         logger.debug(f"Result: {output_message}")
-        return output_message
+        return cast(BT, output_message)
 
     async def call_batch(
         self,

@@ -1,20 +1,23 @@
 import pytest
+from typing import Type
 
 from fastmicro.entrypoint import Entrypoint
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
-from .conftest import User, Greeting
+from .conftest import UserABC, GreetingABC
 
 
 @pytest.mark.asyncio()
 async def test_entrypoint_call(
     service: Service,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
-    entrypoint: Entrypoint[User, Greeting],
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    entrypoint: Entrypoint[UserABC, GreetingABC],
 ) -> None:
-    input_message = User(name="Greg")
+    input_message = user(name="Greg")
 
     output_message = await entrypoint.call(input_message, mock=True)
 
@@ -25,11 +28,13 @@ async def test_entrypoint_call(
 @pytest.mark.asyncio()
 async def test_entrypoint_call_batch(
     service: Service,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
-    entrypoint: Entrypoint[User, Greeting],
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    entrypoint: Entrypoint[UserABC, GreetingABC],
 ) -> None:
-    input_messages = [User(name="Greg", delay=2), User(name="Cara", delay=1)]
+    input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
 
     output_messages = await entrypoint.call_batch(input_messages, mock=True, batch_size=2)
 
@@ -42,11 +47,13 @@ async def test_entrypoint_call_batch(
 @pytest.mark.asyncio()
 async def test_entrypoint_exception(
     service: Service,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
-    invalid: Entrypoint[User, Greeting],
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    invalid: Entrypoint[UserABC, GreetingABC],
 ) -> None:
-    input_message = User(name="Greg")
+    input_message = user(name="Greg")
 
     with pytest.raises(RuntimeError) as excinfo:
         await invalid.call(input_message, mock=True)

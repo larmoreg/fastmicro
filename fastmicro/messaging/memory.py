@@ -67,7 +67,7 @@ class Messaging(MessagingABC):
         self,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__()
+        super().__init__(loop)
         self.loop = loop
         self.lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
         self.queues: Dict[str, Queue[bytes]] = dict()

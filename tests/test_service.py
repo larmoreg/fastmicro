@@ -1,26 +1,29 @@
 import pytest
+from typing import Type
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import MessagingABC
+from fastmicro.messaging import MessageABC, MessagingABC
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
-from .conftest import User, Greeting
+from .conftest import UserABC, GreetingABC
 
 
 @pytest.mark.asyncio()
 async def test_service_process(
     service: Service,
     messaging: MessagingABC,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
-    entrypoint: Entrypoint[User, Greeting],
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    entrypoint: Entrypoint[UserABC, GreetingABC],
 ) -> None:
     name = service.name + "_" + entrypoint.callback.__name__
     await messaging._subscribe(user_topic.name, name)
     await messaging._subscribe(greeting_topic.name, name)
 
-    input_message = User(name="Greg")
+    input_message = user(name="Greg")
     async with messaging.transaction(user_topic.name):
         await messaging.send(user_topic, input_message)
 
@@ -37,15 +40,17 @@ async def test_service_process(
 async def test_service_process_batch(
     service: Service,
     messaging: MessagingABC,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
-    entrypoint: Entrypoint[User, Greeting],
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    entrypoint: Entrypoint[UserABC, GreetingABC],
 ) -> None:
     name = service.name + "_" + entrypoint.callback.__name__
     await messaging._subscribe(user_topic.name, name)
     await messaging._subscribe(greeting_topic.name, name)
 
-    input_messages = [User(name="Greg", delay=2), User(name="Cara", delay=1)]
+    input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
     async with messaging.transaction(user_topic.name):
         await messaging.send_batch(user_topic, input_messages)
 
@@ -64,15 +69,17 @@ async def test_service_process_batch(
 async def test_service_exception(
     service: Service,
     messaging: MessagingABC,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
-    invalid: Entrypoint[User, Greeting],
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    invalid: Entrypoint[UserABC, GreetingABC],
 ) -> None:
     name = service.name + "_" + invalid.callback.__name__
     await messaging._subscribe(user_topic.name, name)
     await messaging._subscribe(greeting_topic.name, name)
 
-    input_message = User(name="Greg")
+    input_message = user(name="Greg")
     async with messaging.transaction(user_topic.name):
         await messaging.send(user_topic, input_message)
 

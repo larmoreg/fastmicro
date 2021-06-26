@@ -31,7 +31,7 @@ class Messaging(MessagingABC):
         address: str = REDIS_ADDRESS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__()
+        super().__init__(loop)
         self.address = address
         if loop:
             self.loop = loop

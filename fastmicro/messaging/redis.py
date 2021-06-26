@@ -2,10 +2,9 @@ import aioredis
 import asyncio
 import logging
 from typing import (
-    Generic,
     List,
     Optional,
-    Type,
+    TypeVar,
 )
 
 from fastmicro.env import (
@@ -13,27 +12,26 @@ from fastmicro.env import (
     TIMEOUT,
     REDIS_ADDRESS,
 )
-from fastmicro.messaging import Messaging
-from fastmicro.serializer import Serializer, MsgpackSerializer
-from fastmicro.types import T, Header
+from fastmicro.messaging import Message, Messaging
+from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 
 
-class RedisHeader(Generic[T], Header[T]):
+class RedisMessage(Message):
     message_id: Optional[bytes]
 
 
-class RedisMessaging(Generic[T], Messaging[RedisHeader[T]]):
-    header_type = RedisHeader
+T = TypeVar("T", bound=RedisMessage)
 
+
+class RedisMessaging(Messaging):
     def __init__(
         self,
-        serializer: Type[Serializer] = MsgpackSerializer,
         address: str = REDIS_ADDRESS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__(serializer=serializer)
+        super().__init__()
         self.address = address
         if loop:
             self.loop = loop
@@ -74,60 +72,52 @@ class RedisMessaging(Generic[T], Messaging[RedisHeader[T]]):
     async def _subscribe(self, topic_name: str, group_name: str) -> None:
         await self._create_group(topic_name, group_name)
 
-    async def _receive(
-        self, topic_name: str, group_name: str, consumer_name: str
-    ) -> RedisHeader[T]:
+    async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
         messages = await self._receive_batch(
-            topic_name, group_name, consumer_name, batch_size=1, timeout=0
+            topic, group_name, consumer_name, batch_size=1, timeout=0
         )
         return messages[0]
 
     async def _receive_batch(
         self,
-        topic_name: str,
+        topic: Topic[T],
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
         timeout: float = TIMEOUT,
-    ) -> List[RedisHeader[T]]:
+    ) -> List[T]:
         assert self.redis
         temp = await self.redis.xread_group(
             group_name,
             consumer_name,
-            [topic_name],
+            [topic.name],
             timeout=int(timeout * 1000),
             count=batch_size,
             latest_ids=[">"],
         )
 
-        headers = list()
-        for stream, message_id, message in temp:
-            data = await self.serializer.deserialize(message[b"data"])
+        messages = list()
+        for stream, message_id, temp_message in temp:
+            message = await topic.deserialize(temp_message[b"data"])
+            message.message_id = message_id
+            messages.append(message)
+        return messages
 
-            header: RedisHeader[T] = RedisHeader(**data)
-            header.message_id = message_id
-            headers.append(header)
-        return headers
+    async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
+        await self._ack_batch(topic_name, group_name, [message])
 
-    async def _ack(self, topic_name: str, group_name: str, header: RedisHeader[T]) -> None:
-        await self._ack_batch(topic_name, group_name, [header])
-
-    async def _ack_batch(
-        self, topic_name: str, group_name: str, headers: List[RedisHeader[T]]
-    ) -> None:
+    async def _ack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
         assert self.redis
-        message_ids = [header.message_id for header in headers]
+        message_ids = [message.message_id for message in messages]
         await self.redis.xack(topic_name, group_name, *message_ids)
 
-    async def _nack(self, topic_name: str, group_name: str, header: RedisHeader[T]) -> None:
+    async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         pass
 
-    async def _nack_batch(
-        self, topic_name: str, group_name: str, headers: List[RedisHeader[T]]
-    ) -> None:
+    async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
         pass
 
-    async def _send(self, topic_name: str, header: RedisHeader[T]) -> None:
+    async def _send(self, topic: Topic[T], message: T) -> None:
         assert self.redis
-        serialized = await self.serializer.serialize(header.dict())
-        await self.redis.xadd(topic_name, {"data": serialized})
+        serialized = await topic.serialize(message)
+        await self.redis.xadd(topic.name, {"data": serialized})

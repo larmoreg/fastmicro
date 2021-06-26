@@ -22,12 +22,16 @@ async def test_entrypoint_call_performance(
     input_messages = [User(name=f"Test{i}") for i in range(1000)]
 
     start = timer()
-    output_messages = await entrypoint.call_batch(input_messages, mock=True, batch_size=100)
+    output_messages = await entrypoint.call_batch(
+        input_messages,
+        mock=True,
+        batch_size=100,
+    )
     end = timer()
 
-    temp = end - start
-    logger.info(f"{temp}s elapsed")
-    logger.info("{} messages / s".format(1000 / temp))
+    diff = end - start
+    logger.info(f"{diff}s elapsed")
+    logger.info("{} messages / s".format(1000 / diff))
 
     assert len(output_messages) == len(input_messages)
     for input_message, output_message in zip(

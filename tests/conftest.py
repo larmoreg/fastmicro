@@ -1,42 +1,45 @@
 import asyncio
 import logging
 import logging.config
-import pydantic
 import pytest
 from typing import AsyncGenerator
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import Messaging
-from fastmicro.messaging.memory import MemoryMessaging
-from fastmicro.messaging.redis import RedisMessaging
+from fastmicro.messaging import T, Messaging
+
+# from fastmicro.messaging.kafka import KafkaMessage, KafkaMessaging
+from fastmicro.messaging.memory import MemoryMessage, MemoryMessaging
+
+# from fastmicro.messaging.redis import RedisMessage, RedisMessaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
-from fastmicro.types import HT
 
 logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 
-class User(pydantic.BaseModel):
+class User(MemoryMessage):
     name: str
     delay: int = 0
 
 
-class Greeting(pydantic.BaseModel):
+class Greeting(MemoryMessage):
     name: str
     greeting: str
 
 
-@pytest.fixture(params=[MemoryMessaging, RedisMessaging])
-async def messaging(request, event_loop: asyncio.AbstractEventLoop) -> AsyncGenerator[Messaging[HT], None]:  # type: ignore
-    _messaging: Messaging[HT] = request.param(loop=event_loop)
+@pytest.fixture
+async def messaging(
+    event_loop: asyncio.AbstractEventLoop,
+) -> AsyncGenerator[Messaging[T], None]:
+    _messaging: Messaging[T] = MemoryMessaging(loop=event_loop)
     await _messaging.connect()
     yield _messaging
     await _messaging.cleanup()
 
 
 @pytest.fixture
-async def service(messaging: Messaging[HT], event_loop: asyncio.AbstractEventLoop) -> Service:
+def service(messaging: Messaging[T], event_loop: asyncio.AbstractEventLoop) -> Service:
     return Service(messaging, "test", loop=event_loop)
 
 
@@ -52,14 +55,16 @@ def greeting_topic() -> Topic[Greeting]:
 
 @pytest.fixture
 def entrypoint(
-    service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
+    service: Service,
+    user_topic: Topic[User],
+    greeting_topic: Topic[Greeting],
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
-    async def greet(user: User) -> Greeting:
-        logger.debug(f"Sleeping for {user.delay}s")
-        await asyncio.sleep(user.delay)
-        logger.debug(f"Waking up after {user.delay}s")
-        return Greeting(name=user.name, greeting=f"Hello, {user.name}!")
+    async def greet(message: User) -> Greeting:
+        logger.debug(f"Sleeping for {message.delay}s")
+        await asyncio.sleep(message.delay)
+        logger.debug(f"Waking up after {message.delay}s")
+        return Greeting(name=message.name, greeting=f"Hello, {message.name}!")
 
     return greet
 
@@ -69,7 +74,7 @@ def invalid(
     service: Service, user_topic: Topic[User], greeting_topic: Topic[Greeting]
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
-    async def greet(user: User) -> Greeting:
+    async def greet(message: User) -> Greeting:
         raise RuntimeError("Test")
 
     return greet

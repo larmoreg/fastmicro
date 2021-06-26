@@ -1,10 +1,12 @@
 import logging
-from typing import Generic, Type
+import pydantic
+from typing import Generic, Type, TypeVar
 
 from .serializer import Serializer, MsgpackSerializer
-from .types import T
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=pydantic.BaseModel)
 
 
 class Topic(Generic[T]):

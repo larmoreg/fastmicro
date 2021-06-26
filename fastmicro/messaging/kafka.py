@@ -6,11 +6,10 @@ import logging
 from typing import (
     AsyncIterator,
     Dict,
-    Generic,
     List,
     Optional,
     Tuple,
-    Type,
+    TypeVar,
 )
 from uuid import uuid4
 
@@ -19,28 +18,27 @@ from fastmicro.env import (
     TIMEOUT,
     KAFKA_BOOTSTRAP_SERVERS,
 )
-from fastmicro.messaging import Messaging
-from fastmicro.serializer import Serializer, MsgpackSerializer
-from fastmicro.types import T, Header, HT
+from fastmicro.messaging import Message, Messaging
+from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 
 
-class KafkaHeader(Generic[T], Header[T]):
+class KafkaMessage(Message):
     partition: Optional[int]
     offset: Optional[int]
 
 
-class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
-    header_type = KafkaHeader
+T = TypeVar("T", bound=KafkaMessage)
 
+
+class KafkaMessaging(Messaging):
     def __init__(
         self,
-        serializer: Type[Serializer] = MsgpackSerializer,
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__(serializer=serializer)
+        super().__init__()
         self.bootstrap_servers = bootstrap_servers
         if loop:
             self.loop = loop
@@ -86,60 +84,53 @@ class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
     async def _subscribe(self, topic_name: str, group_name: str) -> None:
         await self._get_consumer(topic_name, group_name)
 
-    async def _receive(
-        self, topic_name: str, group_name: str, consumer_name: str
-    ) -> KafkaHeader[T]:
-        consumer = await self._get_consumer(topic_name, group_name)
-        message = await consumer.getone()
-        data = await self.serializer.deserialize(message.value)
+    async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
+        consumer = await self._get_consumer(topic.name, group_name)
+        temp_message = await consumer.getone()
 
-        header: KafkaHeader[T] = KafkaHeader(**data)
-        header.partition = message.partition
-        header.offset = message.offset
-        return header
+        message = await topic.deserialize(temp_message.value)
+        message.partition = temp_message.partition
+        message.offset = temp_message.offset
+        return message
 
     async def _receive_batch(
         self,
-        topic_name: str,
+        topic: Topic[T],
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
         timeout: float = TIMEOUT,
-    ) -> List[KafkaHeader[T]]:
-        consumer = await self._get_consumer(topic_name, group_name)
+    ) -> List[T]:
+        consumer = await self._get_consumer(topic.name, group_name)
         temp = await consumer.getmany(timeout_ms=int(timeout * 1000), max_records=batch_size)
 
-        headers = list()
+        output_messages = list()
         for tp, messages in temp.items():
-            for message in messages:
-                data = await self.serializer.deserialize(message.value)
+            for temp_message in messages:
+                message = await topic.deserialize(temp_message.value)
+                message.partition = temp_message.partition
+                message.offset = temp_message.offset
+                output_messages.append(message)
+        return output_messages
 
-                header: KafkaHeader[T] = KafkaHeader(**data)
-                header.partition = message.partition
-                header.offset = message.offset
-                headers.append(header)
-        return headers
-
-    async def _ack(self, topic_name: str, group_name: str, header: KafkaHeader[T]) -> None:
-        tp = aiokafka.TopicPartition(topic_name, header.partition)
-        assert header.offset is not None
+    async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
+        tp = aiokafka.TopicPartition(topic_name, message.partition)
+        assert message.offset is not None
 
         try:
             producer = await self._get_producer(topic_name)
-            await producer.send_offsets_to_transaction({tp: header.offset + 1}, group_name)
+            await producer.send_offsets_to_transaction({tp: message.offset + 1}, group_name)
         except IllegalOperation:
             consumer = await self._get_consumer(topic_name, group_name)
-            await consumer.commit({tp: header.offset + 1})
+            await consumer.commit({tp: message.offset + 1})
 
-    async def _ack_batch(
-        self, topic_name: str, group_name: str, headers: List[KafkaHeader[T]]
-    ) -> None:
-        partitions = set(map(lambda x: x.partition, headers))
+    async def _ack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+        partitions = set(map(lambda x: x.partition, messages))
         offsets = {
             aiokafka.TopicPartition(topic_name, partition): max(
                 map(
                     lambda x: x.offset + 1,  # type: ignore
-                    filter(lambda x: x.partition == partition, headers),
+                    filter(lambda x: x.partition == partition, messages),
                 )
             )
             for partition in partitions
@@ -152,22 +143,22 @@ class KafkaMessaging(Generic[T], Messaging[KafkaHeader[T]]):
             consumer = await self._get_consumer(topic_name, group_name)
             await consumer.commit(offsets)
 
-    async def _nack(self, topic_name: str, group_name: str, header: KafkaHeader[T]) -> None:
+    async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         pass
 
-    async def _nack_batch(self, topic_name: str, group_name: str, headers: List[HT]) -> None:
+    async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
         pass
 
-    async def _send(self, topic_name: str, header: KafkaHeader[T]) -> None:
-        producer = await self._get_producer(topic_name)
-        serialized = await self.serializer.serialize(header.dict())
-        await producer.send_and_wait(topic_name, serialized)
+    async def _send(self, topic: Topic[T], message: T) -> None:
+        producer = await self._get_producer(topic.name)
+        serialized = await topic.serialize(message)
+        await producer.send_and_wait(topic.name, serialized)
 
-    async def _send_batch(self, topic_name: str, headers: List[KafkaHeader[T]]) -> None:
-        producer = await self._get_producer(topic_name)
-        for header in headers:
-            serialized = await self.serializer.serialize(header.dict())
-            await producer.send_and_wait(topic_name, serialized)
+    async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
+        producer = await self._get_producer(topic.name)
+        for message in messages:
+            serialized = await topic.serialize(message)
+            await producer.send_and_wait(topic.name, serialized)
 
     @asynccontextmanager
     async def transaction(self, topic_name) -> AsyncIterator:

@@ -5,12 +5,12 @@ import pytest
 from typing import AsyncGenerator
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import T, Messaging
+from fastmicro.messaging import T, MessagingABC
 
-# from fastmicro.messaging.kafka import KafkaMessage, KafkaMessaging
-from fastmicro.messaging.memory import MemoryMessage, MemoryMessaging
+# from fastmicro.messaging.kafka import Message, Messaging
+from fastmicro.messaging.memory import Message, Messaging
 
-# from fastmicro.messaging.redis import RedisMessage, RedisMessaging
+# from fastmicro.messaging.redis import Message, Messaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -18,12 +18,12 @@ logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 
-class User(MemoryMessage):
+class User(Message):
     name: str
     delay: int = 0
 
 
-class Greeting(MemoryMessage):
+class Greeting(Message):
     name: str
     greeting: str
 
@@ -31,15 +31,15 @@ class Greeting(MemoryMessage):
 @pytest.fixture
 async def messaging(
     event_loop: asyncio.AbstractEventLoop,
-) -> AsyncGenerator[Messaging[T], None]:
-    _messaging: Messaging[T] = MemoryMessaging(loop=event_loop)
+) -> AsyncGenerator[MessagingABC[T], None]:
+    _messaging: MessagingABC[T] = Messaging(loop=event_loop)
     await _messaging.connect()
     yield _messaging
     await _messaging.cleanup()
 
 
 @pytest.fixture
-def service(messaging: Messaging[T], event_loop: asyncio.AbstractEventLoop) -> Service:
+def service(messaging: MessagingABC[T], event_loop: asyncio.AbstractEventLoop) -> Service:
     return Service(messaging, "test", loop=event_loop)
 
 

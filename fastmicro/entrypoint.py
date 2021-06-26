@@ -4,19 +4,19 @@ from typing import Awaitable, Callable, Generic, List, Optional, TypeVar
 from uuid import uuid4
 
 from .env import BATCH_SIZE, TIMEOUT
-from .messaging import Message, Messaging
+from .messaging import MessageABC, MessagingABC
 from .topic import Topic
 
 logger = logging.getLogger(__name__)
 
-AT = TypeVar("AT", bound=Message)
-BT = TypeVar("BT", bound=Message)
+AT = TypeVar("AT", bound=MessageABC)
+BT = TypeVar("BT", bound=MessageABC)
 
 
 class Entrypoint(Generic[AT, BT]):
     def __init__(
         self,
-        messaging: Messaging,
+        messaging: MessagingABC,
         name: str,
         callback: Callable[[AT], Awaitable[BT]],
         topic: Topic[AT],

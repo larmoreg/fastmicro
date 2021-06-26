@@ -10,7 +10,7 @@ from typing import (
     TypeVar,
 )
 
-from fastmicro.messaging import Message, Messaging
+from fastmicro.messaging import MessageABC, MessagingABC
 from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
@@ -55,14 +55,14 @@ class Queue(Generic[QT]):
                 self.nacked.insert(0, message_id)
 
 
-class MemoryMessage(Message):
+class Message(MessageABC):
     message_id: Optional[bytes]
 
 
-T = TypeVar("T", bound=MemoryMessage)
+T = TypeVar("T", bound=Message)
 
 
-class MemoryMessaging(Messaging):
+class Messaging(MessagingABC):
     def __init__(
         self,
         loop: Optional[asyncio.AbstractEventLoop] = None,

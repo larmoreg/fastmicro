@@ -15,15 +15,15 @@ from fastmicro.topic import Topic
 logger = logging.getLogger(__name__)
 
 
-class Message(pydantic.BaseModel):
+class MessageABC(abc.ABC, pydantic.BaseModel):
     uuid: Optional[UUID]
     parent: Optional[UUID]
 
 
-T = TypeVar("T", bound=Message)
+T = TypeVar("T", bound=MessageABC)
 
 
-class Messaging(Generic[T], abc.ABC):
+class MessagingABC(Generic[T], abc.ABC):
     def __init__(self):
         pass
 

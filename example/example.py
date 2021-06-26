@@ -4,7 +4,7 @@ import asyncio
 import logging
 import logging.config
 
-from fastmicro.messaging.kafka import KafkaMessage, KafkaMessaging
+from fastmicro.messaging.kafka import Message, Messaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -12,16 +12,16 @@ logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 
-messaging: KafkaMessaging = KafkaMessaging()
+messaging: Messaging = Messaging()
 service = Service(messaging, "test")
 
 
-class User(KafkaMessage):
+class User(Message):
     name: str
     delay: int = 0
 
 
-class Greeting(KafkaMessage):
+class Greeting(Message):
     name: str
     greeting: str
 

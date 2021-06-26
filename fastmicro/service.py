@@ -6,7 +6,7 @@ from typing import Awaitable, Callable, Dict, Optional
 import uvloop
 
 from .entrypoint import AT, BT, Entrypoint
-from .messaging import Messaging
+from .messaging import MessagingABC
 from .topic import Topic
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ uvloop.install()
 class Service:
     def __init__(
         self,
-        messaging: Messaging,
+        messaging: MessagingABC,
         name: str,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:

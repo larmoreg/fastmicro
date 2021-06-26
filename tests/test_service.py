@@ -1,7 +1,7 @@
 import pytest
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import Messaging
+from fastmicro.messaging import MessagingABC
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -11,7 +11,7 @@ from .conftest import User, Greeting
 @pytest.mark.asyncio()
 async def test_service_process(
     service: Service,
-    messaging: Messaging,
+    messaging: MessagingABC,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
     entrypoint: Entrypoint[User, Greeting],
@@ -36,7 +36,7 @@ async def test_service_process(
 @pytest.mark.asyncio()
 async def test_service_process_batch(
     service: Service,
-    messaging: Messaging,
+    messaging: MessagingABC,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
     entrypoint: Entrypoint[User, Greeting],
@@ -63,7 +63,7 @@ async def test_service_process_batch(
 @pytest.mark.asyncio()
 async def test_service_exception(
     service: Service,
-    messaging: Messaging,
+    messaging: MessagingABC,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
     invalid: Entrypoint[User, Greeting],

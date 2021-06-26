@@ -12,20 +12,20 @@ from fastmicro.env import (
     TIMEOUT,
     REDIS_ADDRESS,
 )
-from fastmicro.messaging import Message, Messaging
+from fastmicro.messaging import MessageABC, MessagingABC
 from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 
 
-class RedisMessage(Message):
+class Message(MessageABC):
     message_id: Optional[bytes]
 
 
-T = TypeVar("T", bound=RedisMessage)
+T = TypeVar("T", bound=Message)
 
 
-class RedisMessaging(Messaging):
+class Messaging(MessagingABC):
     def __init__(
         self,
         address: str = REDIS_ADDRESS,

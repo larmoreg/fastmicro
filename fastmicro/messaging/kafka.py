@@ -18,21 +18,21 @@ from fastmicro.env import (
     TIMEOUT,
     KAFKA_BOOTSTRAP_SERVERS,
 )
-from fastmicro.messaging import Message, Messaging
+from fastmicro.messaging import MessageABC, MessagingABC
 from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 
 
-class KafkaMessage(Message):
+class Message(MessageABC):
     partition: Optional[int]
     offset: Optional[int]
 
 
-T = TypeVar("T", bound=KafkaMessage)
+T = TypeVar("T", bound=Message)
 
 
-class KafkaMessaging(Messaging):
+class Messaging(MessagingABC):
     def __init__(
         self,
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,

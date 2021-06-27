@@ -81,7 +81,7 @@ class Messaging(MessagingABC):
             self.producers[topic_name] = producer
         return self.producers[topic_name]
 
-    async def _subscribe(self, topic_name: str, group_name: str) -> None:
+    async def subscribe(self, topic_name: str, group_name: str) -> None:
         await self._get_consumer(topic_name, group_name)
 
     async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:

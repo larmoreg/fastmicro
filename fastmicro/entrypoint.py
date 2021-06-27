@@ -78,6 +78,7 @@ class Entrypoint(Generic[AT, BT]):
                         self.topic, self.name, self.consumer_name
                     ) as input_message:
                         logger.debug(f"Processing: {input_message}")
+
                         output_message = await self.callback(input_message)
 
                         logger.debug(f"Result: {output_message}")
@@ -95,8 +96,8 @@ class Entrypoint(Generic[AT, BT]):
 
     async def call(self, input_message: AT, mock: bool = False) -> BT:
         if mock:
-            await self.messaging._subscribe(self.topic.name, self.name)
-        await self.messaging._subscribe(self.reply_topic.name, self.name)
+            await self.messaging.subscribe(self.topic.name, self.name)
+        await self.messaging.subscribe(self.reply_topic.name, self.name)
 
         logger.debug(f"Calling: {input_message}")
         async with self.messaging.transaction(self.topic.name):
@@ -126,8 +127,8 @@ class Entrypoint(Generic[AT, BT]):
         timeout: float = TIMEOUT,
     ) -> List[BT]:
         if mock:
-            await self.messaging._subscribe(self.topic.name, self.name)
-        await self.messaging._subscribe(self.reply_topic.name, self.name)
+            await self.messaging.subscribe(self.topic.name, self.name)
+        await self.messaging.subscribe(self.reply_topic.name, self.name)
 
         output_messages: List[BT] = list()
         for i in range(0, len(input_messages), batch_size):

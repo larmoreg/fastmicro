@@ -33,7 +33,7 @@ class MessagingABC(Generic[T], abc.ABC):
     async def cleanup(self) -> None:
         pass
 
-    async def _subscribe(self, topic_name: str, group_name: str) -> None:
+    async def subscribe(self, topic_name: str, group_name: str) -> None:
         pass
 
     @abc.abstractmethod
@@ -50,12 +50,6 @@ class MessagingABC(Generic[T], abc.ABC):
     ) -> List[T]:
         tasks = [self._receive(topic, group_name, consumer_name) for i in range(batch_size)]
         return await asyncio.gather(*tasks)
-        """
-        done, pending = await asyncio.wait(tasks, timeout=timeout)
-        for task in pending:
-            task.cancel()
-        return [task.result() for task in done]
-        """
 
     @abc.abstractmethod
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
@@ -90,7 +84,7 @@ class MessagingABC(Generic[T], abc.ABC):
         self, topic: Topic[T], group_name: str, consumer_name: str
     ) -> AsyncIterator[T]:
         try:
-            await self._subscribe(topic.name, group_name)
+            await self.subscribe(topic.name, group_name)
             message = await self._receive(topic, group_name, consumer_name)
             logger.debug(f"Received {message.uuid}")
 
@@ -113,7 +107,7 @@ class MessagingABC(Generic[T], abc.ABC):
         timeout: float = TIMEOUT,
     ) -> AsyncIterator[List[T]]:
         try:
-            await self._subscribe(topic.name, group_name)
+            await self.subscribe(topic.name, group_name)
             messages = await self._receive_batch(
                 topic, group_name, consumer_name, batch_size, timeout
             )
@@ -135,17 +129,13 @@ class MessagingABC(Generic[T], abc.ABC):
                 await self._nack_batch(topic.name, group_name, messages)
             raise e
 
-    async def send(self, topic: Topic[T], message: T) -> T:
+    async def send(self, topic: Topic[T], message: T) -> None:
         message.uuid = uuid4()
-
         logger.debug(f"Sending {message.uuid}")
         await self._send(topic, message)
-        return message
 
     async def send_batch(self, topic: Topic[T], messages: List[T]) -> None:
         for message in messages:
             message.uuid = uuid4()
-
             logger.debug(f"Sending {message.uuid}")
-
         await self._send_batch(topic, messages)

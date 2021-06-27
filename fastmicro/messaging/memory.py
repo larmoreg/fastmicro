@@ -80,27 +80,22 @@ class Messaging(MessagingABC):
 
     async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
         queue = await self._get_queue(topic.name)
-
         message_id, serialized = await queue.get()
         message = await topic.deserialize(serialized)
         message.message_id = message_id
-
         return message
 
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
         queue = await self._get_queue(topic_name)
-
         assert message.message_id
         await queue.ack(message.message_id)
 
     async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         queue = await self._get_queue(topic_name)
-
         assert message.message_id
         await queue.nack(message.message_id)
 
     async def _send(self, topic: Topic[T], message: T) -> None:
         queue = await self._get_queue(topic.name)
-
         serialized = await topic.serialize(message)
         await queue.put(serialized)

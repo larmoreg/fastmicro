@@ -69,7 +69,7 @@ class Messaging(MessagingABC):
             assert self.redis
             await self.redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
 
-    async def _subscribe(self, topic_name: str, group_name: str) -> None:
+    async def subscribe(self, topic_name: str, group_name: str) -> None:
         await self._create_group(topic_name, group_name)
 
     async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:

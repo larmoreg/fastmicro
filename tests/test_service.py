@@ -2,7 +2,7 @@ import pytest
 from typing import Type
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import MessageABC, MessagingABC
+from fastmicro.messaging import MessagingABC
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -20,8 +20,8 @@ async def test_service_process(
     entrypoint: Entrypoint[UserABC, GreetingABC],
 ) -> None:
     name = service.name + "_" + entrypoint.callback.__name__
-    await messaging._subscribe(user_topic.name, name)
-    await messaging._subscribe(greeting_topic.name, name)
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
 
     input_message = user(name="Greg")
     async with messaging.transaction(user_topic.name):
@@ -47,8 +47,8 @@ async def test_service_process_batch(
     entrypoint: Entrypoint[UserABC, GreetingABC],
 ) -> None:
     name = service.name + "_" + entrypoint.callback.__name__
-    await messaging._subscribe(user_topic.name, name)
-    await messaging._subscribe(greeting_topic.name, name)
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
 
     input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
     async with messaging.transaction(user_topic.name):
@@ -76,8 +76,8 @@ async def test_service_exception(
     invalid: Entrypoint[UserABC, GreetingABC],
 ) -> None:
     name = service.name + "_" + invalid.callback.__name__
-    await messaging._subscribe(user_topic.name, name)
-    await messaging._subscribe(greeting_topic.name, name)
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
 
     input_message = user(name="Greg")
     async with messaging.transaction(user_topic.name):

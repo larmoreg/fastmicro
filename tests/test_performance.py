@@ -3,6 +3,7 @@ import pytest
 from typing import Type
 
 from fastmicro.entrypoint import Entrypoint
+from fastmicro.messaging import MessagingABC
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 @pytest.mark.asyncio()
 async def test_entrypoint_call_performance(
     service: Service,
+    messaging: MessagingABC,
     user: Type[UserABC],
     greeting: Type[GreetingABC],
     user_topic: Topic[UserABC],
@@ -21,6 +23,10 @@ async def test_entrypoint_call_performance(
     entrypoint: Entrypoint[UserABC, GreetingABC],
 ) -> None:
     from timeit import default_timer as timer
+
+    name = service.name + "_" + entrypoint.callback.__name__
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
 
     input_messages = [user(name=f"Test{i}") for i in range(1000)]
 

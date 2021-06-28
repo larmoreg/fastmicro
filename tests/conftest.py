@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture(
     params=[
-        # "fastmicro.messaging.kafka",
+        "fastmicro.messaging.kafka",
         "fastmicro.messaging.memory",
         "fastmicro.messaging.redis",
     ]

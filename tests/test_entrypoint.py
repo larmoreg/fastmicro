@@ -44,6 +44,7 @@ async def test_entrypoint_call_batch(
         assert output_message.greeting == f"Hello, {input_message.name}!"
 
 
+"""
 @pytest.mark.asyncio()
 async def test_entrypoint_exception(
     service: Service,
@@ -59,3 +60,4 @@ async def test_entrypoint_exception(
         await invalid.call(input_message, mock=True)
 
     assert str(excinfo.value) == "Test"
+"""

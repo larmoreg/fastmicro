@@ -3,6 +3,7 @@ from aiokafka.errors import IllegalOperation
 import asyncio
 from contextlib import asynccontextmanager
 import logging
+import sys
 from typing import (
     AsyncIterator,
     Dict,
@@ -63,7 +64,7 @@ class Messaging(MessagingABC):
                 loop=self.loop,
                 group_id=group_name,
                 enable_auto_commit=False,
-                auto_offset_reset="latest",
+                auto_offset_reset="earliest",
                 isolation_level="read_committed",
             )
             await consumer.start()
@@ -102,6 +103,9 @@ class Messaging(MessagingABC):
         timeout: float = TIMEOUT,
     ) -> List[T]:
         consumer = await self._get_consumer(topic.name, group_name)
+        temp = int(timeout * 1000)
+        if not timeout:
+            timeout = sys.maxsize
         temp = await consumer.getmany(timeout_ms=int(timeout * 1000), max_records=batch_size)
 
         output_messages = list()
@@ -116,13 +120,14 @@ class Messaging(MessagingABC):
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
         tp = aiokafka.TopicPartition(topic_name, message.partition)
         assert message.offset is not None
+        offsets = {tp: message.offset + 1}
 
         try:
             producer = await self._get_producer(topic_name)
-            await producer.send_offsets_to_transaction({tp: message.offset + 1}, group_name)
+            await producer.send_offsets_to_transaction(offsets, group_name)
         except IllegalOperation:
             consumer = await self._get_consumer(topic_name, group_name)
-            await consumer.commit({tp: message.offset + 1})
+            await consumer.commit(offsets)
 
     async def _ack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
         partitions = set(map(lambda x: x.partition, messages))
@@ -152,13 +157,13 @@ class Messaging(MessagingABC):
     async def _send(self, topic: Topic[T], message: T) -> None:
         producer = await self._get_producer(topic.name)
         serialized = await topic.serialize(message)
-        await producer.send_and_wait(topic.name, serialized)
+        await producer.send(topic.name, serialized)
 
     async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
         producer = await self._get_producer(topic.name)
         for message in messages:
             serialized = await topic.serialize(message)
-            await producer.send_and_wait(topic.name, serialized)
+            await producer.send(topic.name, serialized)
 
     @asynccontextmanager
     async def transaction(self, topic_name: str) -> AsyncIterator[None]:

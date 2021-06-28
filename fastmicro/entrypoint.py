@@ -140,14 +140,14 @@ class Entrypoint(Generic[AT, BT]):
             async with self.messaging.transaction(self.topic.name):
                 await self.messaging.send_batch(self.topic, temp_input_messages)
 
-            if mock:
-                try:
-                    await self.process(mock=mock, batch_size=batch_size, timeout=timeout)
-                except Exception as e:
-                    raise e
-
             input_message_uuids = set(input_message.uuid for input_message in temp_input_messages)
             while input_message_uuids:
+                if mock:
+                    try:
+                        await self.process(mock=mock, batch_size=batch_size, timeout=timeout)
+                    except Exception as e:
+                        raise e
+
                 async with self.messaging.receive_batch(
                     self.reply_topic,
                     self.name,

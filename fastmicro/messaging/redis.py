@@ -31,12 +31,13 @@ class Messaging(MessagingABC):
         address: str = REDIS_ADDRESS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__(loop)
-        self.address = address
         if loop:
             self.loop = loop
         else:
             self.loop = asyncio.get_event_loop()
+        super().__init__(self.loop)
+
+        self.address = address
         self.redis = None
 
     async def connect(self) -> None:

@@ -1,18 +1,14 @@
 import aiokafka
-from aiokafka.errors import IllegalOperation
 import asyncio
-from contextlib import asynccontextmanager
 import logging
 import sys
 from typing import (
-    AsyncIterator,
     Dict,
     List,
     Optional,
     Tuple,
     TypeVar,
 )
-from uuid import uuid4
 
 from fastmicro.env import (
     BATCH_SIZE,
@@ -39,12 +35,13 @@ class Messaging(MessagingABC):
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        super().__init__(loop)
-        self.bootstrap_servers = bootstrap_servers
         if loop:
             self.loop = loop
         else:
             self.loop = asyncio.get_event_loop()
+        super().__init__(self.loop)
+
+        self.bootstrap_servers = bootstrap_servers
         self.consumers: Dict[Tuple[str, str], aiokafka.AIOKafkaConsumer] = dict()
         self.producers: Dict[str, aiokafka.AIOKafkaProducer] = dict()
 
@@ -64,8 +61,7 @@ class Messaging(MessagingABC):
                 loop=self.loop,
                 group_id=group_name,
                 enable_auto_commit=False,
-                auto_offset_reset="earliest",
-                isolation_level="read_committed",
+                auto_offset_reset="latest",
             )
             await consumer.start()
             self.consumers[key] = consumer
@@ -76,7 +72,6 @@ class Messaging(MessagingABC):
             producer = aiokafka.AIOKafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
                 loop=self.loop,
-                transactional_id=uuid4(),
             )
             await producer.start()
             self.producers[topic_name] = producer
@@ -118,18 +113,14 @@ class Messaging(MessagingABC):
         return output_messages
 
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
+        consumer = await self._get_consumer(topic_name, group_name)
         tp = aiokafka.TopicPartition(topic_name, message.partition)
         assert message.offset is not None
         offsets = {tp: message.offset + 1}
-
-        try:
-            producer = await self._get_producer(topic_name)
-            await producer.send_offsets_to_transaction(offsets, group_name)
-        except IllegalOperation:
-            consumer = await self._get_consumer(topic_name, group_name)
-            await consumer.commit(offsets)
+        await consumer.commit(offsets)
 
     async def _ack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+        consumer = await self._get_consumer(topic_name, group_name)
         partitions = set(map(lambda x: x.partition, messages))
         offsets = {
             aiokafka.TopicPartition(topic_name, partition): max(
@@ -140,13 +131,7 @@ class Messaging(MessagingABC):
             )
             for partition in partitions
         }
-
-        try:
-            producer = await self._get_producer(topic_name)
-            await producer.send_offsets_to_transaction(offsets, group_name)
-        except IllegalOperation:
-            consumer = await self._get_consumer(topic_name, group_name)
-            await consumer.commit(offsets)
+        await consumer.commit(offsets)
 
     async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         pass
@@ -164,9 +149,3 @@ class Messaging(MessagingABC):
         for message in messages:
             serialized = await topic.serialize(message)
             await producer.send(topic.name, serialized)
-
-    @asynccontextmanager
-    async def transaction(self, topic_name: str) -> AsyncIterator[None]:
-        producer = await self._get_producer(topic_name)
-        async with producer.transaction():
-            yield

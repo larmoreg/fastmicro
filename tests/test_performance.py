@@ -30,6 +30,11 @@ async def test_entrypoint_call_performance(
 
     input_messages = [user(name=f"Test{i}") for i in range(1000)]
 
+    output_message = await entrypoint.call(
+        input_messages[0],
+        mock=True,
+    )
+
     start = timer()
     output_messages = await entrypoint.call_batch(
         input_messages,

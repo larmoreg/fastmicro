@@ -98,13 +98,13 @@ class Entrypoint(Generic[AT, BT]):
         logger.debug(f"Calling: {input_message}")
         await self.messaging.send(self.topic, input_message)
 
-        if mock:
-            try:
-                await self.process(mock=mock)
-            except Exception as e:
-                raise e
-
         while True:
+            if mock:
+                try:
+                    await self.process(mock=mock)
+                except Exception as e:
+                    raise e
+
             async with self.messaging.receive(
                 self.reply_topic, self.name, self.consumer_name
             ) as output_message:

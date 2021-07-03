@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
         "fastmicro.messaging.kafka",
         "fastmicro.messaging.memory",
         "fastmicro.messaging.nats",
+        "fastmicro.messaging.pulsar",
         "fastmicro.messaging.redis",
     ]
 )

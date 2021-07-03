@@ -1,4 +1,5 @@
 import asyncio
+
 import logging
 import pulsar
 from typing import Dict, Optional, Tuple, TypeVar
@@ -50,7 +51,7 @@ class Messaging(MessagingABC):
         if key not in self.consumers:
             self.consumers[key] = self.client.subscribe(topic_name, group_name)
 
-    async def _receive(self, topic: Topic[T], group_name: str, user_name: str) -> T:
+    async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
         consumer = self._get_consumer(topic.name, group_name)
         temp = consumer.receive()
         message = await topic.deserialize(temp.data())

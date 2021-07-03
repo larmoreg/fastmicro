@@ -61,6 +61,7 @@ class Messaging(MessagingABC):
                 loop=self.loop,
                 group_id=group_name,
                 enable_auto_commit=False,
+                auto_offset_reset="earliest",
             )
             await consumer.start()
             self.consumers[key] = consumer

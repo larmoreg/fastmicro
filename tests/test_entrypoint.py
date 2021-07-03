@@ -39,7 +39,10 @@ async def test_entrypoint_call_batch(
     output_messages = await entrypoint.call_batch(input_messages, mock=True, batch_size=2)
 
     assert len(output_messages) == len(input_messages)
-    for input_message, output_message in zip(input_messages, output_messages):
+    for input_message, output_message in zip(
+        sorted(input_messages, key=lambda x: str(x.name)),
+        sorted(output_messages, key=lambda x: str(x.name)),
+    ):
         assert output_message.name == input_message.name
         assert output_message.greeting == f"Hello, {input_message.name}!"
 

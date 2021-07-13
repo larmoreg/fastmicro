@@ -98,10 +98,10 @@ class Messaging(MessagingABC):
         timeout: float = TIMEOUT,
     ) -> List[T]:
         consumer = await self._get_consumer(topic.name, group_name)
-        temp = int(timeout * 1000)
-        if not timeout:
-            timeout = sys.maxsize
-        temp = await consumer.getmany(timeout_ms=int(timeout * 1000), max_records=batch_size)
+        timeout_ms = int(timeout * 1000)
+        if not timeout_ms:
+            timeout_ms = sys.maxsize
+        temp = await consumer.getmany(timeout_ms=timeout_ms, max_records=batch_size)
 
         output_messages = list()
         for tp, messages in temp.items():

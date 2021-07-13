@@ -49,7 +49,8 @@ class MessagingABC(Generic[T], abc.ABC):
         timeout: float = TIMEOUT,
     ) -> List[T]:
         tasks = [self._receive(topic, group_name, consumer_name) for i in range(batch_size)]
-        return await asyncio.gather(*tasks)
+        done, pending = await asyncio.wait(tasks, timeout=timeout)
+        return [task.result() for task in done]
 
     @abc.abstractmethod
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
@@ -79,6 +80,7 @@ class MessagingABC(Generic[T], abc.ABC):
     async def receive(
         self, topic: Topic[T], group_name: str, consumer_name: str
     ) -> AsyncIterator[T]:
+        message = None
         try:
             await self.subscribe(topic.name, group_name)
             message = await self._receive(topic, group_name, consumer_name)
@@ -89,8 +91,9 @@ class MessagingABC(Generic[T], abc.ABC):
             logger.debug(f"Acking {message.uuid}")
             await self._ack(topic.name, group_name, message)
         except Exception as e:
-            logger.debug(f"Nacking {message.uuid}")
-            await self._nack(topic.name, group_name, message)
+            if message:
+                logger.debug(f"Nacking {message.uuid}")
+                await self._nack(topic.name, group_name, message)
             raise e
 
     @asynccontextmanager
@@ -102,6 +105,7 @@ class MessagingABC(Generic[T], abc.ABC):
         batch_size: int = BATCH_SIZE,
         timeout: float = TIMEOUT,
     ) -> AsyncIterator[List[T]]:
+        messages = list()
         try:
             await self.subscribe(topic.name, group_name)
             messages = await self._receive_batch(

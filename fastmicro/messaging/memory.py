@@ -3,9 +3,7 @@ import logging
 from typing import (
     Dict,
     Generic,
-    List,
     Optional,
-    Set,
     Tuple,
     TypeVar,
 )
@@ -20,39 +18,45 @@ QT = TypeVar("QT")
 
 class Queue(Generic[QT]):
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
-        self.lock: asyncio.Lock = asyncio.Lock(loop=loop)
-        self.queue: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=loop)
+        if loop:
+            self.loop = loop
+        else:
+            self.loop = asyncio.get_event_loop()
+
+        self.nacked: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=self.loop)
+        self.queue: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=self.loop)
+        self.read_lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
+        self.pending: Dict[bytes, QT] = dict()
+        self.write_lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
         self.index: int = 0
-        self.items: Dict[bytes, QT] = dict()
-        self.pending: Set[bytes] = set()
-        self.nacked: List[bytes] = list()
 
     async def get(self) -> Tuple[bytes, QT]:
-        async with self.lock:
-            if self.nacked:
-                message_id = self.nacked.pop()
-            else:
+        async with self.read_lock:
+            try:
+                message_id, item = self.nacked.get_nowait()
+            except asyncio.QueueEmpty:
                 message_id, item = await self.queue.get()
-                self.items[message_id] = item
-            self.pending.add(message_id)
-        return message_id, self.items[message_id]
+            self.pending[message_id] = item
+        return message_id, self.pending[message_id]
 
     async def put(self, item: QT) -> bytes:
-        message_id = str(self.index).encode()
-        self.index += 1
+        async with self.write_lock:
+            message_id = str(self.index).encode()
+            self.index += 1
         await self.queue.put((message_id, item))
         return message_id
 
     async def ack(self, message_id: bytes) -> None:
-        async with self.lock:
+        async with self.read_lock:
             if message_id in self.pending:
-                self.pending.remove(message_id)
+                del self.pending[message_id]
 
     async def nack(self, message_id: bytes) -> None:
-        async with self.lock:
+        async with self.read_lock:
             if message_id in self.pending:
-                self.pending.remove(message_id)
-                self.nacked.insert(0, message_id)
+                item = self.pending[message_id]
+                del self.pending[message_id]
+                self.nacked.put((message_id, item))
 
 
 class Message(MessageABC):

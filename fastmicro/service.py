@@ -22,12 +22,13 @@ class Service:
         name: str,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        self.messaging = messaging
-        self.name = name
         if loop:
             self.loop = loop
         else:
             self.loop = asyncio.get_event_loop()
+
+        self.messaging = messaging
+        self.name = name
         self.entrypoints: Dict[str, Entrypoint] = dict()
 
     def entrypoint(

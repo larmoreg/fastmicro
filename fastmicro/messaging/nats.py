@@ -1,11 +1,14 @@
 import asyncio
 import logging
 from nats.aio.client import Client as NATS
-from stan.aio.client import Client as STAN
+from stan.aio.client import Client as STAN, Msg
 import stan.pb.protocol_pb2 as protocol
 from typing import (
     Any,
+    Awaitable,
+    Callable,
     Dict,
+    Generic,
     List,
     Optional,
     Tuple,
@@ -22,6 +25,29 @@ from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 
+QT = TypeVar("QT")
+
+
+class Queue(Generic[QT]):
+    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+        if loop:
+            self.loop = loop
+        else:
+            self.loop = asyncio.get_event_loop()
+
+        self.read_lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
+        self.write_lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
+        self.queue: asyncio.Queue[QT] = asyncio.Queue(loop=self.loop)
+
+    async def get(self) -> QT:
+        async with self.read_lock:
+            item = await self.queue.get()
+        return item
+
+    async def put(self, item: QT) -> None:
+        async with self.write_lock:
+            await self.queue.put(item)
+
 
 class Message(MessageABC):
     sequence: Optional[int]
@@ -32,8 +58,8 @@ class Message(MessageABC):
 T = TypeVar("T", bound=Message)
 
 
-def async_partial(f, *args):
-    async def f2(*args2):
+def async_partial(f: Callable[..., Any], *args: Any) -> Callable[..., Awaitable[Any]]:
+    async def f2(*args2: Any) -> Any:
         result = f(*args, *args2)
         if asyncio.iscoroutinefunction(f):
             result = await result
@@ -62,7 +88,7 @@ class Messaging(MessagingABC):
         self.nc: Any = None
         self.scs: Dict[str, Any] = dict()
         self.subs: Dict[str, Any] = dict()
-        self.queues: Dict[Tuple[str, str], asyncio.Queue[Any]] = dict()
+        self.queues: Dict[Tuple[str, str], Queue[Msg]] = dict()
 
     async def connect(self) -> None:
         self.nc = NATS()
@@ -81,31 +107,30 @@ class Messaging(MessagingABC):
         assert self.nc
         await self.nc.close()
 
-    def _get_queue(self, topic_name, group_name):
+    async def _get_queue(self, topic_name: str, group_name: str) -> Queue[Msg]:
         key = (topic_name, group_name)
         if key not in self.queues:
-            self.queues[key] = asyncio.Queue(loop=self.loop)
+            self.queues[key] = Queue(loop=self.loop)
         return self.queues[key]
 
     async def subscribe(self, topic_name: str, group_name: str) -> None:
-        async def _cb(queue, msg):
+        async def _cb(queue: Queue[Msg], msg: Msg) -> None:
             await queue.put(msg)
 
         if topic_name not in self.subs:
-            queue = self._get_queue(topic_name, group_name)
+            queue = await self._get_queue(topic_name, group_name)
             sub = await self.sc.subscribe(
                 topic_name,
                 queue=group_name,
                 durable_name="durable",
                 cb=async_partial(_cb, queue),
                 manual_acks=True,
-                ack_wait=60,
+                ack_wait=60,  # FIXME: what to do about this...?
             )
             self.subs[topic_name] = sub
-        return self.subs[topic_name]
 
     async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
-        queue = self._get_queue(topic.name, group_name)
+        queue: Queue[Msg] = await self._get_queue(topic.name, group_name)
         msg = await queue.get()
 
         message = await topic.deserialize(msg.data)
@@ -127,8 +152,5 @@ class Messaging(MessagingABC):
         pass
 
     async def _send(self, topic: Topic[T], message: T) -> None:
-        async def _ack_handler(ack):
-            pass
-
         serialized = await topic.serialize(message)
-        await self.sc.publish(topic.name, serialized, ack_handler=_ack_handler)
+        await self.sc.publish(topic.name, serialized)

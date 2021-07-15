@@ -1,7 +1,11 @@
 import aioredis
 import asyncio
+from contextlib import asynccontextmanager
 import logging
 from typing import (
+    Any,
+    AsyncIterator,
+    Dict,
     List,
     Optional,
     TypeVar,
@@ -38,7 +42,8 @@ class Messaging(MessagingABC):
         super().__init__(self.loop)
 
         self.address = address
-        self.redis = None
+        self.redis: Optional[Any] = None
+        self.transactions: Dict[str, Optional[Any]] = dict()
 
     async def connect(self) -> None:
         self.redis = await aioredis.create_redis_pool(self.address, loop=self.loop)
@@ -118,7 +123,29 @@ class Messaging(MessagingABC):
     async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
         pass
 
-    async def _send(self, topic: Topic[T], message: T) -> None:
-        assert self.redis
+    @staticmethod
+    async def _go(transaction: Optional[Any], topic: Topic[T], message: T) -> None:
+        assert transaction
         serialized = await topic.serialize(message)
-        await self.redis.xadd(topic.name, {"data": serialized})
+        transaction.xadd(topic.name, {"data": serialized})
+
+    async def _send(self, topic: Topic[T], message: T) -> None:
+        async with self.transaction(topic.name) as transaction:
+            await self._go(transaction, topic, message)
+
+    async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
+        async with self.transaction(topic.name) as transaction:
+            tasks = [self._go(transaction, topic, message) for message in messages]
+            await asyncio.gather(*tasks)
+
+    @asynccontextmanager
+    async def transaction(self, topic_name: str) -> AsyncIterator[Optional[Any]]:
+        if topic_name not in self.transactions:
+            assert self.redis
+            transaction = self.redis.multi_exec()
+            self.transactions[topic_name] = transaction
+            yield transaction
+            await transaction.execute()
+            del self.transactions[topic_name]
+        else:
+            yield self.transactions[topic_name]

@@ -100,8 +100,7 @@ class Entrypoint(Generic[AT, BT]):
         await self.messaging.subscribe(self.reply_topic.name, self.name)
 
         logger.debug(f"Calling: {input_message}")
-        async with self.messaging.transaction(self.topic.name):
-            await self.messaging.send(self.topic, input_message)
+        await self.messaging.send(self.topic, input_message)
 
         while True:
             if mock:
@@ -137,8 +136,7 @@ class Entrypoint(Generic[AT, BT]):
 
             for input_message in temp_input_messages:
                 logger.debug(f"Calling: {input_message}")
-            async with self.messaging.transaction(self.topic.name):
-                await self.messaging.send_batch(self.topic, temp_input_messages)
+            await self.messaging.send_batch(self.topic, temp_input_messages)
 
             input_message_uuids = set(input_message.uuid for input_message in temp_input_messages)
             while input_message_uuids:

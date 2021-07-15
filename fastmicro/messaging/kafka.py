@@ -48,6 +48,7 @@ class Messaging(MessagingABC):
         self.bootstrap_servers = bootstrap_servers
         self.consumers: Dict[Tuple[str, str], aiokafka.AIOKafkaConsumer] = dict()
         self.producers: Dict[str, aiokafka.AIOKafkaProducer] = dict()
+        self.transactions: Dict[str, aiokafka.TransactionContext] = dict()
 
     async def cleanup(self) -> None:
         tasks = [consumer.stop() for consumer in self.consumers.values()]
@@ -155,19 +156,30 @@ class Messaging(MessagingABC):
     async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
         pass
 
-    async def _send(self, topic: Topic[T], message: T) -> None:
-        producer = await self._get_producer(topic.name)
+    @staticmethod
+    async def _go(producer: aiokafka.AIOKafkaProducer, topic: Topic[T], message: T) -> None:
         serialized = await topic.serialize(message)
         await producer.send(topic.name, serialized)
 
+    async def _send(self, topic: Topic[T], message: T) -> None:
+        producer = await self._get_producer(topic.name)
+        async with self.transaction(topic.name):
+            await self._go(producer, topic, message)
+
     async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
         producer = await self._get_producer(topic.name)
-        for message in messages:
-            serialized = await topic.serialize(message)
-            await producer.send(topic.name, serialized)
+        async with self.transaction(topic.name):
+            tasks = [self._go(producer, topic, message) for message in messages]
+            await asyncio.gather(*tasks)
 
     @asynccontextmanager
     async def transaction(self, topic_name: str) -> AsyncIterator[None]:
-        producer = await self._get_producer(topic_name)
-        async with producer.transaction():
+        if topic_name not in self.transactions:
+            producer = await self._get_producer(topic_name)
+            transaction = producer.transaction()
+            self.transactions[topic_name] = transaction
+            async with transaction:
+                yield
+            del self.transactions[topic_name]
+        else:
             yield

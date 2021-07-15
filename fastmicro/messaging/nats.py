@@ -8,7 +8,6 @@ from typing import (
     Awaitable,
     Callable,
     Dict,
-    Generic,
     List,
     Optional,
     Tuple,
@@ -24,29 +23,6 @@ from fastmicro.messaging import MessageABC, MessagingABC
 from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
-
-QT = TypeVar("QT")
-
-
-class Queue(Generic[QT]):
-    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
-        if loop:
-            self.loop = loop
-        else:
-            self.loop = asyncio.get_event_loop()
-
-        self.read_lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
-        self.write_lock: asyncio.Lock = asyncio.Lock(loop=self.loop)
-        self.queue: asyncio.Queue[QT] = asyncio.Queue(loop=self.loop)
-
-    async def get(self) -> QT:
-        async with self.read_lock:
-            item = await self.queue.get()
-        return item
-
-    async def put(self, item: QT) -> None:
-        async with self.write_lock:
-            await self.queue.put(item)
 
 
 class Message(MessageABC):
@@ -88,7 +64,7 @@ class Messaging(MessagingABC):
         self.nc: Any = None
         self.scs: Dict[str, Any] = dict()
         self.subs: Dict[str, Any] = dict()
-        self.queues: Dict[Tuple[str, str], Queue[Msg]] = dict()
+        self.queues: Dict[Tuple[str, str], asyncio.Queue[Msg]] = dict()
 
     async def connect(self) -> None:
         self.nc = NATS()
@@ -107,14 +83,14 @@ class Messaging(MessagingABC):
         assert self.nc
         await self.nc.close()
 
-    async def _get_queue(self, topic_name: str, group_name: str) -> Queue[Msg]:
+    async def _get_queue(self, topic_name: str, group_name: str) -> asyncio.Queue[Msg]:
         key = (topic_name, group_name)
         if key not in self.queues:
-            self.queues[key] = Queue(loop=self.loop)
+            self.queues[key] = asyncio.Queue(loop=self.loop)
         return self.queues[key]
 
     async def subscribe(self, topic_name: str, group_name: str) -> None:
-        async def _cb(queue: Queue[Msg], msg: Msg) -> None:
+        async def _cb(queue: asyncio.Queue[Msg], msg: Msg) -> None:
             await queue.put(msg)
 
         if topic_name not in self.subs:
@@ -130,7 +106,7 @@ class Messaging(MessagingABC):
             self.subs[topic_name] = sub
 
     async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
-        queue: Queue[Msg] = await self._get_queue(topic.name, group_name)
+        queue: asyncio.Queue[Msg] = await self._get_queue(topic.name, group_name)
         msg = await queue.get()
 
         message = await topic.deserialize(msg.data)

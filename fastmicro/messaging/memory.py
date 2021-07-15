@@ -50,7 +50,7 @@ class Queue(Generic[QT]):
         if message_id in self.pending:
             item = self.pending[message_id]
             del self.pending[message_id]
-            self.nacked.put((message_id, item))
+            await self.nacked.put((message_id, item))
 
 
 class Message(MessageABC):

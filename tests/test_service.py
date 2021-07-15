@@ -66,7 +66,6 @@ async def test_service_process_batch(
             assert output_message.greeting == f"Hello, {input_message.name}!"
 
 
-"""
 @pytest.mark.asyncio()
 async def test_service_exception(
     service: Service,
@@ -88,4 +87,3 @@ async def test_service_exception(
         await invalid.process(mock=True)
 
     assert str(excinfo.value) == "Test"
-"""

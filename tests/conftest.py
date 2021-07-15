@@ -1,5 +1,6 @@
 import asyncio
 from importlib import __import__
+from importlib.util import find_spec
 import logging
 import logging.config
 import pytest
@@ -10,19 +11,21 @@ from fastmicro.messaging import T, MessageABC, MessagingABC
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
+backends = ["fastmicro.messaging.memory"]
+if find_spec("aiokafka"):
+    backends.append("fastmicro.messaging.kafka")
+if find_spec("nats") and find_spec("stan"):
+    backends.append("fastmicro.messaging.nats")
+if find_spec("pulsar"):
+    backends.append("fastmicro.messaging.pulsar")
+if find_spec("aioredis"):
+    backends.append("fastmicro.messaging.redis")
+
 logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(
-    params=[
-        "fastmicro.messaging.kafka",
-        "fastmicro.messaging.memory",
-        "fastmicro.messaging.nats",
-        "fastmicro.messaging.pulsar",
-        "fastmicro.messaging.redis",
-    ]
-)
+@pytest.fixture(params=backends)
 def backend(request) -> str:  # type: ignore
     return cast(str, request.param)
 
@@ -75,9 +78,7 @@ async def messaging(
 
 
 @pytest.fixture
-def service(
-    messaging: MessagingABC[T], event_loop: asyncio.AbstractEventLoop
-) -> Service:
+def service(messaging: MessagingABC[T], event_loop: asyncio.AbstractEventLoop) -> Service:
     return Service(messaging, "test", loop=event_loop)
 
 

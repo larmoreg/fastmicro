@@ -64,12 +64,12 @@ class Messaging(MessagingABC):
 
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
         consumer = self._get_consumer(topic_name, group_name)
-        temp = await aiopulsar.MessageId.deserialize(message.message_id)  # type: ignore
+        temp = await aiopulsar.MessageId.deserialize(message.message_id)
         await consumer.acknowledge(temp)
 
     async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         consumer = self._get_consumer(topic_name, group_name)
-        temp = await aiopulsar.MessageId.deserialize(message.message_id)  # type: ignore
+        temp = await aiopulsar.MessageId.deserialize(message.message_id)
         await consumer.negative_acknowledge(temp)
 
     async def _send(self, topic: Topic[T], message: T) -> None:

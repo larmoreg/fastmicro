@@ -87,14 +87,17 @@ class Messaging(MessagingABC):
     async def subscribe(self, topic_name: str, group_name: str) -> None:
         await self._get_consumer(topic_name, group_name)
 
-    async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
-        consumer = await self._get_consumer(topic.name, group_name)
-        temp_message = await consumer.getone()
-
+    @staticmethod
+    async def _raw_receive(topic: Topic[T], temp_message: aiokafka.structs.ConsumerRecord) -> T:
         message = await topic.deserialize(temp_message.value)
         message.partition = temp_message.partition
         message.offset = temp_message.offset
         return message
+
+    async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
+        consumer = await self._get_consumer(topic.name, group_name)
+        message = await consumer.getone()
+        return await self._raw_receive(topic, message)
 
     async def _receive_batch(
         self,
@@ -110,13 +113,12 @@ class Messaging(MessagingABC):
             timeout_ms = sys.maxsize
         temp = await consumer.getmany(timeout_ms=timeout_ms, max_records=batch_size)
 
-        output_messages = list()
-        for tp, messages in temp.items():
-            for temp_message in messages:
-                message = await topic.deserialize(temp_message.value)
-                message.partition = temp_message.partition
-                message.offset = temp_message.offset
-                output_messages.append(message)
+        tasks = [
+            self._raw_receive(topic, message)
+            for _, messages in temp.items()
+            for message in messages
+        ]
+        output_messages = await asyncio.gather(*tasks)
         return output_messages
 
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:

@@ -58,19 +58,22 @@ class Entrypoint(Generic[AT, BT]):
                         timeout=timeout,
                     ) as input_messages:
                         if input_messages:
-                            tasks = list()
-                            for input_message in input_messages:
-                                logger.debug(f"Processing: {input_message}")
-                                tasks.append(self.callback(input_message))
+                            if logger.level >= logging.DEBUG:
+                                for input_message in input_messages:
+                                    logger.debug(f"Processing: {input_message}")
 
+                            tasks = [
+                                self.callback(input_message) for input_message in input_messages
+                            ]
                             output_messages = await asyncio.gather(*tasks)
-
                             for input_message, output_message in zip(
                                 input_messages, output_messages
                             ):
-                                logger.debug(f"Result: {output_message}")
                                 output_message.parent = input_message.uuid
 
+                            if logger.level >= logging.DEBUG:
+                                for output_message in output_messages:
+                                    logger.debug(f"Result: {output_message}")
                             await self.messaging.send_batch(self.reply_topic, output_messages)
             else:
                 async with self.messaging.transaction(self.reply_topic.name):
@@ -134,8 +137,9 @@ class Entrypoint(Generic[AT, BT]):
             j = i + batch_size
             temp_input_messages = input_messages[i:j]
 
-            for input_message in temp_input_messages:
-                logger.debug(f"Calling: {input_message}")
+            if logger.level >= logging.DEBUG:
+                for input_message in temp_input_messages:
+                    logger.debug(f"Calling: {input_message}")
             await self.messaging.send_batch(self.topic, temp_input_messages)
 
             input_message_uuids = set(input_message.uuid for input_message in temp_input_messages)
@@ -159,7 +163,7 @@ class Entrypoint(Generic[AT, BT]):
                                 input_message_uuids.remove(output_message.parent)
                                 output_messages.append(output_message)
 
-        for output_message in output_messages:
-            logger.debug(f"Result: {output_message}")
-
+        if logger.level >= logging.DEBUG:
+            for output_message in output_messages:
+                logger.debug(f"Result: {output_message}")
         return output_messages

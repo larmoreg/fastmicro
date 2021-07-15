@@ -78,6 +78,14 @@ class Messaging(MessagingABC):
     async def subscribe(self, topic_name: str, group_name: str) -> None:
         await self._create_group(topic_name, group_name)
 
+    @staticmethod
+    async def _raw_receive(
+        topic: Topic[T], temp_message: Dict[bytes, bytes], message_id: bytes
+    ) -> T:
+        message = await topic.deserialize(temp_message[b"data"])
+        message.message_id = message_id
+        return message
+
     async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
         messages = await self._receive_batch(
             topic, group_name, consumer_name, batch_size=1, timeout=0
@@ -102,11 +110,10 @@ class Messaging(MessagingABC):
             latest_ids=[">"],
         )
 
-        messages = list()
-        for stream, message_id, temp_message in temp:
-            message = await topic.deserialize(temp_message[b"data"])
-            message.message_id = message_id
-            messages.append(message)
+        tasks = [
+            self._raw_receive(topic, message, message_id) for stream, message_id, message in temp
+        ]
+        messages = await asyncio.gather(*tasks)
         return messages
 
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
@@ -124,18 +131,18 @@ class Messaging(MessagingABC):
         pass
 
     @staticmethod
-    async def _go(transaction: Optional[Any], topic: Topic[T], message: T) -> None:
+    async def _raw_send(transaction: Optional[Any], topic: Topic[T], message: T) -> None:
         assert transaction
         serialized = await topic.serialize(message)
         transaction.xadd(topic.name, {"data": serialized})
 
     async def _send(self, topic: Topic[T], message: T) -> None:
         async with self.transaction(topic.name) as transaction:
-            await self._go(transaction, topic, message)
+            await self._raw_send(transaction, topic, message)
 
     async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
         async with self.transaction(topic.name) as transaction:
-            tasks = [self._go(transaction, topic, message) for message in messages]
+            tasks = [self._raw_send(transaction, topic, message) for message in messages]
             await asyncio.gather(*tasks)
 
     @asynccontextmanager

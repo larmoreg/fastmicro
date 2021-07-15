@@ -116,20 +116,23 @@ class MessagingABC(Generic[T], abc.ABC):
                 topic, group_name, consumer_name, batch_size, timeout
             )
             if messages:
-                for message in messages:
-                    logger.debug(f"Received {message.uuid}")
+                if logger.level >= logging.DEBUG:
+                    for message in messages:
+                        logger.debug(f"Received {message.uuid}")
 
                 yield messages
 
-                for message in messages:
-                    logger.debug(f"Acking {message.uuid}")
+                if logger.level >= logging.DEBUG:
+                    for message in messages:
+                        logger.debug(f"Acking {message.uuid}")
                 await self._ack_batch(topic.name, group_name, messages)
             else:
                 yield messages
         except Exception as e:
             if messages:
-                for message in messages:
-                    logger.debug(f"Nacking {message.uuid}")
+                if logger.level >= logging.DEBUG:
+                    for message in messages:
+                        logger.debug(f"Nacking {message.uuid}")
                 await self._nack_batch(topic.name, group_name, messages)
             raise e
 
@@ -141,5 +144,8 @@ class MessagingABC(Generic[T], abc.ABC):
     async def send_batch(self, topic: Topic[T], messages: List[T]) -> None:
         for message in messages:
             message.uuid = uuid4()
-            logger.debug(f"Sending {message.uuid}")
+
+        if logger.level >= logging.DEBUG:
+            for message in messages:
+                logger.debug(f"Sending {message.uuid}")
         await self._send_batch(topic, messages)

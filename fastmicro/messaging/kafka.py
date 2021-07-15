@@ -159,19 +159,19 @@ class Messaging(MessagingABC):
         pass
 
     @staticmethod
-    async def _go(producer: aiokafka.AIOKafkaProducer, topic: Topic[T], message: T) -> None:
+    async def _raw_send(producer: aiokafka.AIOKafkaProducer, topic: Topic[T], message: T) -> None:
         serialized = await topic.serialize(message)
         await producer.send(topic.name, serialized)
 
     async def _send(self, topic: Topic[T], message: T) -> None:
         producer = await self._get_producer(topic.name)
         async with self.transaction(topic.name):
-            await self._go(producer, topic, message)
+            await self._raw_send(producer, topic, message)
 
     async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
         producer = await self._get_producer(topic.name)
         async with self.transaction(topic.name):
-            tasks = [self._go(producer, topic, message) for message in messages]
+            tasks = [self._raw_send(producer, topic, message) for message in messages]
             await asyncio.gather(*tasks)
 
     @asynccontextmanager

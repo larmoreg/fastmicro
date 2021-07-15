@@ -3,7 +3,7 @@ name = "aioify"
 version = "0.4.0"
 description = "Make every Python function async/await"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5,<4.0"
 
 [package.dependencies]
@@ -14,7 +14,7 @@ name = "aiokafka"
 version = "0.7.1"
 description = "Kafka integration with asyncio."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -28,7 +28,7 @@ name = "aioredis"
 version = "1.3.1"
 description = "asyncio (PEP 3156) Redis support"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -40,7 +40,7 @@ name = "async-timeout"
 version = "3.0.1"
 description = "Timeout context manager for asyncio programs"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.5.3"
 
 [[package]]
@@ -48,7 +48,7 @@ name = "asyncio-nats-client"
 version = "0.11.4"
 description = "NATS client for Python Asyncio"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.extras]
@@ -59,7 +59,7 @@ name = "asyncio-nats-streaming"
 version = "0.4.0"
 description = "NATS Streaming client for Python Asyncio"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -93,7 +93,7 @@ name = "certifi"
 version = "2021.5.30"
 description = "Python package for providing Mozilla's CA Bundle."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -120,7 +120,7 @@ name = "fastavro"
 version = "1.4.2"
 description = "Fast read/write of AVRO files"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.extras]
@@ -142,7 +142,7 @@ name = "hiredis"
 version = "2.0.0"
 description = "Python wrapper for hiredis"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [[package]]
@@ -175,7 +175,7 @@ name = "kafka-python"
 version = "2.0.2"
 description = "Pure Python client for Apache Kafka"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.extras]
@@ -186,7 +186,7 @@ name = "module-wrapper"
 version = "0.3.1"
 description = "Module wrapper Python library"
 category = "main"
-optional = false
+optional = true
 python-versions = ">=3.6,<4.0"
 
 [package.dependencies]
@@ -204,7 +204,7 @@ python-versions = "*"
 name = "mypy"
 version = "0.812"
 description = "Optional static typing for Python"
-category = "main"
+category = "dev"
 optional = false
 python-versions = ">=3.5"
 
@@ -220,7 +220,7 @@ dmypy = ["psutil (>=4.0)"]
 name = "mypy-extensions"
 version = "0.4.3"
 description = "Experimental type system extensions for programs checked with the mypy typechecker."
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 
@@ -254,7 +254,7 @@ name = "protobuf"
 version = "3.17.3"
 description = "Protocol Buffers"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -265,7 +265,7 @@ name = "pulsar-client"
 version = "2.8.0"
 description = "Apache Pulsar Python client library"
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.dependencies]
@@ -400,7 +400,7 @@ name = "stdlib-list"
 version = "0.8.0"
 description = "A list of Python Standard Libraries (2.6-7, 3.2-9)."
 category = "main"
-optional = false
+optional = true
 python-versions = "*"
 
 [package.extras]
@@ -418,7 +418,7 @@ python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 name = "typed-ast"
 version = "1.4.3"
 description = "a fork of Python 2 and 3 ast modules with type comment support"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 
@@ -455,10 +455,16 @@ python-versions = ">=3.6"
 docs = ["sphinx", "jaraco.packaging (>=8.2)", "rst.linker (>=1.9)"]
 testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytest-cov", "pytest-enabler (>=1.0.1)", "jaraco.itertools", "func-timeout", "pytest-black (>=0.3.7)", "pytest-mypy"]
 
+[extras]
+kafka = ["aiokafka"]
+nats = ["asyncio-nats-client", "asyncio-nats-streaming", "wheel"]
+pulsar = ["aioify", "fastavro", "pulsar-client"]
+redis = ["aioredis"]
+
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "5b321eeb06ecf5b51568fd716da800fd0929664707f6c7e194ee4e50991f5cca"
+content-hash = "db52cabd086289c16201408cdb6fd8ad51813ff5f49c19554110e48be52cb7e3"
 
 [metadata.files]
 aioify = [
@@ -742,9 +748,13 @@ protobuf = [
     {file = "protobuf-3.17.3-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:2ae692bb6d1992afb6b74348e7bb648a75bb0d3565a3f5eea5bec8f62bd06d87"},
     {file = "protobuf-3.17.3-cp38-cp38-manylinux2014_aarch64.whl", hash = "sha256:99938f2a2d7ca6563c0ade0c5ca8982264c484fdecf418bd68e880a7ab5730b1"},
     {file = "protobuf-3.17.3-cp38-cp38-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:6902a1e4b7a319ec611a7345ff81b6b004b36b0d2196ce7a748b3493da3d226d"},
+    {file = "protobuf-3.17.3-cp38-cp38-win32.whl", hash = "sha256:59e5cf6b737c3a376932fbfb869043415f7c16a0cf176ab30a5bbc419cd709c1"},
+    {file = "protobuf-3.17.3-cp38-cp38-win_amd64.whl", hash = "sha256:ebcb546f10069b56dc2e3da35e003a02076aaa377caf8530fe9789570984a8d2"},
     {file = "protobuf-3.17.3-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:4ffbd23640bb7403574f7aff8368e2aeb2ec9a5c6306580be48ac59a6bac8bde"},
     {file = "protobuf-3.17.3-cp39-cp39-manylinux2014_aarch64.whl", hash = "sha256:26010f693b675ff5a1d0e1bdb17689b8b716a18709113288fead438703d45539"},
     {file = "protobuf-3.17.3-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:e76d9686e088fece2450dbc7ee905f9be904e427341d289acbe9ad00b78ebd47"},
+    {file = "protobuf-3.17.3-cp39-cp39-win32.whl", hash = "sha256:a38bac25f51c93e4be4092c88b2568b9f407c27217d3dd23c7a57fa522a17554"},
+    {file = "protobuf-3.17.3-cp39-cp39-win_amd64.whl", hash = "sha256:85d6303e4adade2827e43c2b54114d9a6ea547b671cb63fafd5011dc47d0e13d"},
     {file = "protobuf-3.17.3-py2.py3-none-any.whl", hash = "sha256:2bfb815216a9cd9faec52b16fd2bfa68437a44b67c56bee59bc3926522ecb04e"},
     {file = "protobuf-3.17.3.tar.gz", hash = "sha256:72804ea5eaa9c22a090d2803813e280fb273b62d5ae497aaf3553d141c4fdd7b"},
 ]
@@ -759,7 +769,6 @@ pulsar-client = [
     {file = "pulsar_client-2.8.0-cp38-cp38-macosx_10_15_x86_64.whl", hash = "sha256:eccf648f3854355be029b61369ae59f4a4f9c8e70c4d1384e8d07e6ba126e438"},
     {file = "pulsar_client-2.8.0-cp38-cp38-macosx_11_0_x86_64.whl", hash = "sha256:d1c19e82eba102380464ac09f037e59af4337742f12e480331b5d402dae64e7f"},
     {file = "pulsar_client-2.8.0-cp38-cp38-manylinux1_x86_64.whl", hash = "sha256:e6272d59066fc7a73ed155d1ea092ce190e5c1f9ce4c3db366ab34e861daff5b"},
-    {file = "pulsar_client-2.8.0-cp39-cp39-macosx_10_15_x86_64.whl", hash = "sha256:eea9d89e97d08a56c3bf343398fcc2d00f5876757eca9dcdfc0f3019a8438522"},
     {file = "pulsar_client-2.8.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:653256268a147e2ca5f8610c7c5c5ee9a7b2b2546ae72d57327028e681b24fa6"},
     {file = "pulsar_client-2.8.0-cp39-cp39-macosx_11_0_x86_64.whl", hash = "sha256:9cb3663974f1b44810828462d51d38838025d07c298c4092156c5f8ee1190a81"},
 ]

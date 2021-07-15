@@ -77,6 +77,10 @@ class MessagingABC(Generic[T], abc.ABC):
         await asyncio.gather(*tasks)
 
     @asynccontextmanager
+    async def transaction(self, topic_name: str) -> AsyncIterator[None]:
+        yield
+
+    @asynccontextmanager
     async def receive(
         self, topic: Topic[T], group_name: str, consumer_name: str
     ) -> AsyncIterator[T]:

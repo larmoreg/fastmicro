@@ -1,8 +1,7 @@
 import abc
+import msgpack
 from typing import Any, cast, Dict
 from uuid import UUID
-
-import msgpack
 
 
 class Serializer(abc.ABC):

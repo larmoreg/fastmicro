@@ -49,38 +49,42 @@ class Entrypoint(Generic[AT, BT]):
     ) -> None:
         try:
             if batch_size:
-                async with self.messaging.receive_batch(
-                    self.topic,
-                    self.name,
-                    self.consumer_name,
-                    batch_size=batch_size,
-                    timeout=timeout,
-                ) as input_messages:
-                    if input_messages:
-                        tasks = list()
-                        for input_message in input_messages:
-                            logger.debug(f"Processing: {input_message}")
-                            tasks.append(self.callback(input_message))
+                async with self.messaging.transaction(self.reply_topic.name):
+                    async with self.messaging.receive_batch(
+                        self.topic,
+                        self.name,
+                        self.consumer_name,
+                        batch_size=batch_size,
+                        timeout=timeout,
+                    ) as input_messages:
+                        if input_messages:
+                            tasks = list()
+                            for input_message in input_messages:
+                                logger.debug(f"Processing: {input_message}")
+                                tasks.append(self.callback(input_message))
 
-                        output_messages = await asyncio.gather(*tasks)
+                            output_messages = await asyncio.gather(*tasks)
 
-                        for input_message, output_message in zip(input_messages, output_messages):
-                            logger.debug(f"Result: {output_message}")
-                            output_message.parent = input_message.uuid
+                            for input_message, output_message in zip(
+                                input_messages, output_messages
+                            ):
+                                logger.debug(f"Result: {output_message}")
+                                output_message.parent = input_message.uuid
 
-                        await self.messaging.send_batch(self.reply_topic, output_messages)
+                            await self.messaging.send_batch(self.reply_topic, output_messages)
             else:
-                async with self.messaging.receive(
-                    self.topic, self.name, self.consumer_name
-                ) as input_message:
-                    logger.debug(f"Processing: {input_message}")
+                async with self.messaging.transaction(self.reply_topic.name):
+                    async with self.messaging.receive(
+                        self.topic, self.name, self.consumer_name
+                    ) as input_message:
+                        logger.debug(f"Processing: {input_message}")
 
-                    output_message = await self.callback(input_message)
+                        output_message = await self.callback(input_message)
 
-                    logger.debug(f"Result: {output_message}")
-                    output_message.parent = input_message.uuid
+                        logger.debug(f"Result: {output_message}")
+                        output_message.parent = input_message.uuid
 
-                    await self.messaging.send(self.reply_topic, output_message)
+                        await self.messaging.send(self.reply_topic, output_message)
         except Exception as e:
             logger.exception("Processing failed")
             if mock:
@@ -96,7 +100,8 @@ class Entrypoint(Generic[AT, BT]):
         await self.messaging.subscribe(self.reply_topic.name, self.name)
 
         logger.debug(f"Calling: {input_message}")
-        await self.messaging.send(self.topic, input_message)
+        async with self.messaging.transaction(self.topic.name):
+            await self.messaging.send(self.topic, input_message)
 
         while True:
             if mock:
@@ -132,7 +137,8 @@ class Entrypoint(Generic[AT, BT]):
 
             for input_message in temp_input_messages:
                 logger.debug(f"Calling: {input_message}")
-            await self.messaging.send_batch(self.topic, temp_input_messages)
+            async with self.messaging.transaction(self.topic.name):
+                await self.messaging.send_batch(self.topic, temp_input_messages)
 
             input_message_uuids = set(input_message.uuid for input_message in temp_input_messages)
             while input_message_uuids:

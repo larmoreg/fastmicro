@@ -1,4 +1,15 @@
 [[package]]
+name = "aioify"
+version = "0.4.0"
+description = "Make every Python function async/await"
+category = "main"
+optional = false
+python-versions = ">=3.5,<4.0"
+
+[package.dependencies]
+module-wrapper = ">=0.3.0,<0.4.0"
+
+[[package]]
 name = "aiokafka"
 version = "0.7.1"
 description = "Kafka integration with asyncio."
@@ -136,7 +147,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "importlib-metadata"
-version = "4.6.0"
+version = "4.6.1"
 description = "Read metadata from Python packages"
 category = "dev"
 optional = false
@@ -169,6 +180,17 @@ python-versions = "*"
 
 [package.extras]
 crc32c = ["crc32c"]
+
+[[package]]
+name = "module-wrapper"
+version = "0.3.1"
+description = "Module wrapper Python library"
+category = "main"
+optional = false
+python-versions = ">=3.6,<4.0"
+
+[package.dependencies]
+stdlib_list = ">=0.8.0,<0.9.0"
 
 [[package]]
 name = "msgpack"
@@ -204,11 +226,11 @@ python-versions = "*"
 
 [[package]]
 name = "packaging"
-version = "20.9"
+version = "21.0"
 description = "Core utilities for Python packages"
 category = "dev"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+python-versions = ">=3.6"
 
 [package.dependencies]
 pyparsing = ">=2.0.2"
@@ -374,6 +396,17 @@ optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
+name = "stdlib-list"
+version = "0.8.0"
+description = "A list of Python Standard Libraries (2.6-7, 3.2-9)."
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.extras]
+develop = ["sphinx"]
+
+[[package]]
 name = "toml"
 version = "0.10.2"
 description = "Python Library for Tom's Obvious, Minimal Language"
@@ -399,7 +432,7 @@ python-versions = "*"
 
 [[package]]
 name = "uvloop"
-version = "0.15.2"
+version = "0.15.3"
 description = "Fast implementation of asyncio event loop on top of libuv"
 category = "main"
 optional = false
@@ -425,9 +458,13 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "0561caa643a683b17c8d72a2812e902d117eca8cc33ecdef6eb8a91dd65ee8ad"
+content-hash = "5b321eeb06ecf5b51568fd716da800fd0929664707f6c7e194ee4e50991f5cca"
 
 [metadata.files]
+aioify = [
+    {file = "aioify-0.4.0-py3-none-any.whl", hash = "sha256:91de4c8cbb8abc88bb3366de1ccdc1de7ad9e3425044c30b1b72aae6cd9942c5"},
+    {file = "aioify-0.4.0.tar.gz", hash = "sha256:5b5a22eb2b72ed480ad7bc26dfcf616233e79cdf48a9ffcabdbf13450688f22d"},
+]
 aiokafka = [
     {file = "aiokafka-0.7.1-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:90a91155aeb28c872b74ecb3c9f671253db10cf23dc3af858bd9ed1630c0d1ae"},
     {file = "aiokafka-0.7.1-cp36-cp36m-manylinux1_i686.whl", hash = "sha256:02f67258a78e5d9d17470816ea879a653c5efecc0c6686e18d792fbd38e1f70c"},
@@ -605,8 +642,8 @@ hiredis = [
     {file = "hiredis-2.0.0.tar.gz", hash = "sha256:81d6d8e39695f2c37954d1011c0480ef7cf444d4e3ae24bc5e89ee5de360139a"},
 ]
 importlib-metadata = [
-    {file = "importlib_metadata-4.6.0-py3-none-any.whl", hash = "sha256:c6513572926a96458f8c8f725bf0e00108fba0c9583ade9bd15b869c9d726e33"},
-    {file = "importlib_metadata-4.6.0.tar.gz", hash = "sha256:4a5611fea3768d3d967c447ab4e93f567d95db92225b43b7b238dbfb855d70bb"},
+    {file = "importlib_metadata-4.6.1-py3-none-any.whl", hash = "sha256:9f55f560e116f8643ecf2922d9cd3e1c7e8d52e683178fecd9d08f6aa357e11e"},
+    {file = "importlib_metadata-4.6.1.tar.gz", hash = "sha256:079ada16b7fc30dfbb5d13399a5113110dab1aa7c2bc62f66af75f0b717c8cac"},
 ]
 iniconfig = [
     {file = "iniconfig-1.1.1-py2.py3-none-any.whl", hash = "sha256:011e24c64b7f47f6ebd835bb12a743f2fbe9a26d4cecaa7f53bc4f35ee9da8b3"},
@@ -615,6 +652,10 @@ iniconfig = [
 kafka-python = [
     {file = "kafka-python-2.0.2.tar.gz", hash = "sha256:04dfe7fea2b63726cd6f3e79a2d86e709d608d74406638c5da33a01d45a9d7e3"},
     {file = "kafka_python-2.0.2-py2.py3-none-any.whl", hash = "sha256:2d92418c7cb1c298fa6c7f0fb3519b520d0d7526ac6cb7ae2a4fc65a51a94b6e"},
+]
+module-wrapper = [
+    {file = "module-wrapper-0.3.1.tar.gz", hash = "sha256:b14a0988b0317a8f8c657520d62ee311ea319580ffec941632cf8a3152fd0d4f"},
+    {file = "module_wrapper-0.3.1-py3-none-any.whl", hash = "sha256:f695c520d95cc05279a8c3126d5430a53f93b6d094de2f6c67fad555c4ee9c88"},
 ]
 msgpack = [
     {file = "msgpack-1.0.2-cp35-cp35m-manylinux1_i686.whl", hash = "sha256:b6d9e2dae081aa35c44af9c4298de4ee72991305503442a5c74656d82b581fe9"},
@@ -675,8 +716,8 @@ mypy-extensions = [
     {file = "mypy_extensions-0.4.3.tar.gz", hash = "sha256:2d82818f5bb3e369420cb3c4060a7970edba416647068eb4c5343488a6c604a8"},
 ]
 packaging = [
-    {file = "packaging-20.9-py2.py3-none-any.whl", hash = "sha256:67714da7f7bc052e064859c05c595155bd1ee9f69f76557e21f051443c20947a"},
-    {file = "packaging-20.9.tar.gz", hash = "sha256:5b327ac1320dc863dca72f4514ecc086f31186744b84a230374cc1fd776feae5"},
+    {file = "packaging-21.0-py3-none-any.whl", hash = "sha256:c86254f9220d55e31cc94d69bade760f0847da8000def4dfe1c6b872fd14ff14"},
+    {file = "packaging-21.0.tar.gz", hash = "sha256:7dc96269f53a4ccec5c0670940a4281106dd0bb343f47b7471f779df49c2fbe7"},
 ]
 pluggy = [
     {file = "pluggy-0.13.1-py2.py3-none-any.whl", hash = "sha256:966c145cd83c96502c3c3868f50408687b38434af77734af1e9ca461a4081d2d"},
@@ -780,6 +821,10 @@ six = [
     {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
     {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
 ]
+stdlib-list = [
+    {file = "stdlib-list-0.8.0.tar.gz", hash = "sha256:a1e503719720d71e2ed70ed809b385c60cd3fb555ba7ec046b96360d30b16d9f"},
+    {file = "stdlib_list-0.8.0-py3-none-any.whl", hash = "sha256:2ae0712a55b68f3fbbc9e58d6fa1b646a062188f49745b495f94d3310a9fdd3e"},
+]
 toml = [
     {file = "toml-0.10.2-py2.py3-none-any.whl", hash = "sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b"},
     {file = "toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f"},
@@ -822,16 +867,16 @@ typing-extensions = [
     {file = "typing_extensions-3.10.0.0.tar.gz", hash = "sha256:50b6f157849174217d0656f99dc82fe932884fb250826c18350e159ec6cdf342"},
 ]
 uvloop = [
-    {file = "uvloop-0.15.2-cp37-cp37m-macosx_10_14_x86_64.whl", hash = "sha256:19fa1d56c91341318ac5d417e7b61c56e9a41183946cc70c411341173de02c69"},
-    {file = "uvloop-0.15.2-cp37-cp37m-manylinux2010_x86_64.whl", hash = "sha256:e5e5f855c9bf483ee6cd1eb9a179b740de80cb0ae2988e3fa22309b78e2ea0e7"},
-    {file = "uvloop-0.15.2-cp37-cp37m-manylinux2014_aarch64.whl", hash = "sha256:42eda9f525a208fbc4f7cecd00fa15c57cc57646c76632b3ba2fe005004f051d"},
-    {file = "uvloop-0.15.2-cp38-cp38-macosx_10_14_x86_64.whl", hash = "sha256:90e56f17755e41b425ad19a08c41dc358fa7bf1226c0f8e54d4d02d556f7af7c"},
-    {file = "uvloop-0.15.2-cp38-cp38-manylinux2010_x86_64.whl", hash = "sha256:7ae39b11a5f4cec1432d706c21ecc62f9e04d116883178b09671aa29c46f7a47"},
-    {file = "uvloop-0.15.2-cp38-cp38-manylinux2014_aarch64.whl", hash = "sha256:b45218c99795803fb8bdbc9435ff7f54e3a591b44cd4c121b02fa83affb61c7c"},
-    {file = "uvloop-0.15.2-cp39-cp39-macosx_10_14_x86_64.whl", hash = "sha256:114543c84e95df1b4ff546e6e3a27521580466a30127f12172a3278172ad68bc"},
-    {file = "uvloop-0.15.2-cp39-cp39-manylinux2010_x86_64.whl", hash = "sha256:44cac8575bf168601424302045234d74e3561fbdbac39b2b54cc1d1d00b70760"},
-    {file = "uvloop-0.15.2-cp39-cp39-manylinux2014_aarch64.whl", hash = "sha256:6de130d0cb78985a5d080e323b86c5ecaf3af82f4890492c05981707852f983c"},
-    {file = "uvloop-0.15.2.tar.gz", hash = "sha256:2bb0624a8a70834e54dde8feed62ed63b50bad7a1265c40d6403a2ac447bce01"},
+    {file = "uvloop-0.15.3-cp37-cp37m-macosx_10_14_x86_64.whl", hash = "sha256:e71fb9038bfcd7646ca126c5ef19b17e48d4af9e838b2bcfda7a9f55a6552a32"},
+    {file = "uvloop-0.15.3-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:7522df4e45e4f25b50adbbbeb5bb9847495c438a628177099d2721f2751ff825"},
+    {file = "uvloop-0.15.3-cp37-cp37m-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:ae2b325c0f6d748027f7463077e457006b4fdb35a8788f01754aadba825285ee"},
+    {file = "uvloop-0.15.3-cp38-cp38-macosx_10_14_x86_64.whl", hash = "sha256:0de811931e90ae2da9e19ce70ffad73047ab0c1dba7c6e74f9ae1a3aabeb89bd"},
+    {file = "uvloop-0.15.3-cp38-cp38-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:7f4b8a905df909a407c5791fb582f6c03b0d3b491ecdc1cdceaefbc9bf9e08f6"},
+    {file = "uvloop-0.15.3-cp38-cp38-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2d8ffe44ae709f839c54bacf14ed283f41bee90430c3b398e521e10f8d117b3a"},
+    {file = "uvloop-0.15.3-cp39-cp39-macosx_10_14_x86_64.whl", hash = "sha256:63a3288abbc9c8ee979d7e34c34e780b2fbab3e7e53d00b6c80271119f277399"},
+    {file = "uvloop-0.15.3-cp39-cp39-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:5cda65fc60a645470b8525ce014516b120b7057b576fa876cdfdd5e60ab1efbb"},
+    {file = "uvloop-0.15.3-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1ff05116ede1ebdd81802df339e5b1d4cab1dfbd99295bf27e90b4cec64d70e9"},
+    {file = "uvloop-0.15.3.tar.gz", hash = "sha256:905f0adb0c09c9f44222ee02f6b96fd88b493478fffb7a345287f9444e926030"},
 ]
 zipp = [
     {file = "zipp-3.5.0-py3-none-any.whl", hash = "sha256:957cfda87797e389580cb8b9e3870841ca991e2125350677b2ca83a0e99390a3"},

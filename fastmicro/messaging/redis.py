@@ -2,6 +2,7 @@ import aioredis
 import asyncio
 from contextlib import asynccontextmanager
 import logging
+from pydantic import Field
 from typing import (
     Any,
     AsyncIterator,
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class Message(MessageABC):
-    message_id: Optional[bytes]
+    message_id: Optional[bytes] = Field(None, hidden=True)
 
 
 T = TypeVar("T", bound=Message)

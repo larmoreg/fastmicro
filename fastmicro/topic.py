@@ -1,12 +1,12 @@
 import logging
-import pydantic
 from typing import Generic, Type, TypeVar
 
+from .schema import CustomBaseModel
 from .serializer import Serializer, MsgpackSerializer
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=pydantic.BaseModel)
+T = TypeVar("T", bound=CustomBaseModel)
 
 
 class Topic(Generic[T]):
@@ -21,7 +21,7 @@ class Topic(Generic[T]):
         self.serializer = serializer()
 
     async def serialize(self, message: T) -> bytes:
-        return await self.serializer.serialize(message.dict())
+        return await self.serializer.serialize(message.dict(exclude_hidden=False))
 
     async def deserialize(self, serialized: bytes) -> T:
         data = await self.serializer.deserialize(serialized)

@@ -2,6 +2,7 @@ from aioify import aioify
 import asyncio
 import logging
 import pulsar
+from pydantic import Field
 from typing import Dict, Optional, Tuple, TypeVar
 
 from fastmicro.env import PULSAR_SERVICE_URL
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class Message(MessageABC):
-    message_id: Optional[bytes]
+    message_id: Optional[bytes] = Field(None, hidden=True)
 
 
 T = TypeVar("T", bound=Message)

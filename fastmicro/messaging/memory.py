@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pydantic import Field
 from typing import (
     Dict,
     Generic,
@@ -54,7 +55,7 @@ class Queue(Generic[QT]):
 
 
 class Message(MessageABC):
-    message_id: Optional[bytes]
+    message_id: Optional[bytes] = Field(None, hidden=True)
 
 
 T = TypeVar("T", bound=Message)

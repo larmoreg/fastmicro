@@ -3,6 +3,7 @@ from aiokafka.errors import IllegalOperation
 import asyncio
 from contextlib import asynccontextmanager
 import logging
+from pydantic import Field
 import sys
 from typing import (
     AsyncIterator,
@@ -26,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 
 class Message(MessageABC):
-    partition: Optional[int]
-    offset: Optional[int]
+    partition: Optional[int] = Field(None, hidden=True)
+    offset: Optional[int] = Field(None, hidden=True)
 
 
 T = TypeVar("T", bound=Message)

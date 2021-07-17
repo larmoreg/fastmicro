@@ -2,22 +2,23 @@ import abc
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-import pydantic
+from pydantic import Field
 from typing import AsyncIterator, Generic, List, Optional, TypeVar
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
 from fastmicro.env import (
     BATCH_SIZE,
     TIMEOUT,
 )
+from fastmicro.schema import CustomBaseModel
 from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 
 
-class MessageABC(abc.ABC, pydantic.BaseModel):
-    uuid: Optional[UUID]
-    parent: Optional[UUID]
+class MessageABC(abc.ABC, CustomBaseModel):
+    uuid: Optional[UUID] = Field(None, hidden=True)
+    parent: Optional[UUID] = Field(None, hidden=True)
 
 
 T = TypeVar("T", bound=MessageABC)

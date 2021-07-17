@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from nats.aio.client import Client as NATS
+from pydantic import Field
 from stan.aio.client import Client as STAN, Msg
 import stan.pb.protocol_pb2 as protocol
 from typing import (
@@ -26,9 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 class Message(MessageABC):
-    sequence: Optional[int]
-    subject: Optional[str]
-    ack_inbox: Optional[str]
+    sequence: Optional[int] = Field(None, hidden=True)
+    subject: Optional[str] = Field(None, hidden=True)
+    ack_inbox: Optional[str] = Field(None, hidden=True)
 
 
 T = TypeVar("T", bound=Message)

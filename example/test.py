@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 messaging: Messaging = Messaging()
-service = Service(messaging, "test")
+service = Service("test", messaging)
 
 
 class User(Message):

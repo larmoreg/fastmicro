@@ -16,16 +16,16 @@ BT = TypeVar("BT", bound=MessageABC)
 class Entrypoint(Generic[AT, BT]):
     def __init__(
         self,
-        messaging: MessagingABC,
         name: str,
+        messaging: MessagingABC,
         callback: Callable[[AT], Awaitable[BT]],
         topic: Topic[AT],
         reply_topic: Topic[BT],
         consumer_name: str = str(uuid4()),
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
-        self.messaging = messaging
         self.name = name
+        self.messaging = messaging
         self.callback = callback
         self.topic = topic
         self.reply_topic = reply_topic

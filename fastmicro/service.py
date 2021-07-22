@@ -18,8 +18,8 @@ uvloop.install()
 class Service:
     def __init__(
         self,
-        messaging: MessagingABC,
         name: str,
+        messaging: MessagingABC,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
         if loop:
@@ -27,8 +27,8 @@ class Service:
         else:
             self.loop = asyncio.get_event_loop()
 
-        self.messaging = messaging
         self.name = name
+        self.messaging = messaging
         self.entrypoints: Dict[str, Entrypoint] = dict()
 
     def entrypoint(
@@ -40,8 +40,8 @@ class Service:
                 raise ValueError(f"Function {name} already registered in service {self.name}")
 
             entrypoint = Entrypoint(
-                self.messaging,
                 self.name + "_" + name,
+                self.messaging,
                 callback,
                 topic,
                 reply_topic,

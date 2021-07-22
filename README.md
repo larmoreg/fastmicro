@@ -4,7 +4,7 @@
     <em>Fast, simple microservice framework</em>
 </p>
 <p align="center">
-<a href="https://github.com/larmoreg/fastmicro/actions?query=workflow%3ATest" target="_blank">
+<a href="https://github.com/larmoreg/fastmicro/actions?query=workflow%3ACI" target="_blank">
     <img src="https://github.com/larmoreg/fastmicro/workflows/Test/badge.svg" alt="Test">
 </a>
 <a href="https://codecov.io/gh/larmoreg/fastmicro" target="_blank">

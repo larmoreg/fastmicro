@@ -94,8 +94,11 @@ class Entrypoint(Generic[AT, BT]):
                 raise e
 
     async def process_loop(self) -> None:
-        while True:
-            await self.process()
+        try:
+            while True:
+                await self.process()
+        except asyncio.exceptions.CancelledError:
+            pass
 
     async def call(self, input_message: AT, mock: bool = False) -> BT:
         if mock:

@@ -1,5 +1,6 @@
 import asyncio
 import atexit
+from functools import partial
 import logging
 import signal
 from typing import Awaitable, Callable, Dict, Optional
@@ -52,23 +53,19 @@ class Service:
 
         return _entrypoint
 
-    async def _start(self) -> None:
+    async def start(self) -> None:
         await self.messaging.connect()
 
         tasks = [entrypoint.start() for entrypoint in self.entrypoints.values()]
         await asyncio.gather(*tasks)
 
     def run(self) -> None:
-        self.loop.run_until_complete(self._start())
-        atexit.register(self.stop)
+        self.loop.run_until_complete(self.start())
+        atexit.register(partial(self.loop.run_until_complete, self.stop))
         self.loop.run_forever()
 
-    async def _stop(self) -> None:
+    async def stop(self) -> None:
         tasks = [entrypoint.stop() for entrypoint in self.entrypoints.values()]
         await asyncio.gather(*tasks)
 
         await self.messaging.cleanup()
-
-    def stop(self) -> None:
-        self.loop.run_until_complete(self._stop())
-        self.loop.close()

@@ -17,7 +17,7 @@
 
 ---
 
-FastMicro is a modern, fast (high-performance) framework for building microservices with Python 3.6+ based on asyncio.
+FastMicro is a modern, fast (high-performance) framework for building microservices with Python 3.7+ based on asyncio.
 
 ## Install
 

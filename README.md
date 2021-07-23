@@ -8,7 +8,7 @@
     <img src="https://github.com/larmoreg/fastmicro/actions/workflows/main.yml/badge.svg" alt="Test">
 </a>
 <a href="https://codecov.io/gh/larmoreg/fastmicro" target="_blank">
-    <img src="https://img.shields.io/codecov/c/github/larmoreg/fastmicro?color=%2334D058" alt="Coverage">
+  <img src="https://codecov.io/gh/larmoreg/fastmicro/branch/master/graph/badge.svg?token=YRMGejrLMC" alt="Coverage/>
 </a>
 <a href="https://pypi.org/project/fastmicro" target="_blank">
     <img src="https://img.shields.io/pypi/v/fastmicro?color=%2334D058&label=pypi%20package" alt="Package version">

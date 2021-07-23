@@ -4,6 +4,29 @@ version = "0.1.0"
 description = "Fast, simple microservice framework"
 authors = ["larmoreg <larmoreg@gmail.com>"]
 license = "MIT License"
+readme = "README.md"
+repository = "https://github.com/larmoreg/fastmicro"
+
+keywords = ["fast", "simple", "microservice", "framework", "asyncio", "redis", "kafka"]
+classifiers = [
+    "Framework :: AsyncIO",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Distributed Computing",
+]
 
 [tool.poetry.dependencies]
 msgpack = "^1.0.2"

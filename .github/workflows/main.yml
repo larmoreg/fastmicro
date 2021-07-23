@@ -30,9 +30,9 @@ jobs:
       - name: Build
         run: poetry build
       - name: Install
-        run: poetry install
+        run: poetry install --dev
       - name: Pytest
-        run: pytest --cov-report=html --cov=fastmicro tests/
+        run: poetry run pytest --cov-report=html --cov=fastmicro tests/
       - name: Codecov
         uses: codecov/codecov-action@v2.0.1
         with:

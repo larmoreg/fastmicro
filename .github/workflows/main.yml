@@ -30,7 +30,7 @@ jobs:
       - name: Build
         run: poetry build
       - name: Install
-        run: poetry install --dev
+        run: poetry install
       - name: Pytest
         run: poetry run pytest --cov-report=html --cov=fastmicro tests/
       - name: Codecov

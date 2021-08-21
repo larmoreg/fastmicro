@@ -8,6 +8,7 @@ from typing import AsyncGenerator, cast, Type
 
 from fastmicro.entrypoint import Entrypoint
 from fastmicro.messaging import T, MessageABC, MessagingABC
+from fastmicro.serializer import SerializerABC
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
@@ -20,6 +21,12 @@ if find_spec("pulsar"):
     backends.append("fastmicro.messaging.pulsar")
 if find_spec("aioredis"):
     backends.append("fastmicro.messaging.redis")
+
+serializers = ["fastmicro.serializer.json"]
+if find_spec("cbor2"):
+    serializers.append("fastmicro.serializer.cbor")
+if find_spec("msgpack"):
+    serializers.append("fastmicro.serializer.msgpack")
 
 logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
@@ -38,6 +45,11 @@ def message_type(backend: str) -> Type[MessageABC]:
 @pytest.fixture
 def messaging_type(backend: str) -> Type[MessagingABC]:
     return __import__(backend, fromlist=("Messaging",)).Messaging  # type: ignore
+
+
+@pytest.fixture(params=serializers)
+def serializer(request) -> str:  # type: ignore
+    return __import__(cast(str, request.param), fromlist=("Serializer",)).Serializer  # type: ignore
 
 
 class UserABC(MessageABC):
@@ -83,13 +95,15 @@ def service(messaging: MessagingABC[T], event_loop: asyncio.AbstractEventLoop) -
 
 
 @pytest.fixture
-def user_topic(user: Type[UserABC]) -> Topic[UserABC]:
-    return Topic("user", user)
+def user_topic(user: Type[UserABC], serializer: Type[SerializerABC]) -> Topic[UserABC]:
+    return Topic("user", user, serializer=serializer)
 
 
 @pytest.fixture
-def greeting_topic(greeting: Type[GreetingABC]) -> Topic[GreetingABC]:
-    return Topic("greeting", greeting)
+def greeting_topic(
+    greeting: Type[GreetingABC], serializer: Type[SerializerABC]
+) -> Topic[GreetingABC]:
+    return Topic("greeting", greeting, serializer=serializer)
 
 
 @pytest.fixture

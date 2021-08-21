@@ -6,9 +6,9 @@ import signal
 from typing import Awaitable, Callable, Dict, Optional
 import uvloop
 
-from .entrypoint import AT, BT, Entrypoint
-from .messaging import MessagingABC
-from .topic import Topic
+from fastmicro.entrypoint import AT, BT, Entrypoint
+from fastmicro.messaging import MessagingABC
+from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 

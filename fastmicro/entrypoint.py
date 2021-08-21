@@ -3,9 +3,9 @@ import logging
 from typing import Awaitable, Callable, cast, Generic, List, Optional, TypeVar
 from uuid import uuid4
 
-from .env import BATCH_SIZE, TIMEOUT
-from .messaging import MessageABC, MessagingABC
-from .topic import Topic
+from fastmicro.env import BATCH_SIZE, TIMEOUT
+from fastmicro.messaging import MessageABC, MessagingABC
+from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ from typing import (
 
 from fastmicro.env import (
     BATCH_SIZE,
-    TIMEOUT,
+    MESSAGING_TIMEOUT,
     REDIS_ADDRESS,
 )
 from fastmicro.messaging import MessageABC, MessagingABC
@@ -99,7 +99,7 @@ class Messaging(MessagingABC):
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
-        timeout: float = TIMEOUT,
+        timeout: float = MESSAGING_TIMEOUT,
     ) -> List[T]:
         assert self.redis
         temp = await self.redis.xread_group(

@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from fastmicro.env import (
     BATCH_SIZE,
-    TIMEOUT,
+    MESSAGING_TIMEOUT,
     KAFKA_BOOTSTRAP_SERVERS,
 )
 from fastmicro.messaging import MessageABC, MessagingABC
@@ -67,7 +67,6 @@ class Messaging(MessagingABC):
                 loop=self.loop,
                 group_id=group_name,
                 enable_auto_commit=False,
-                auto_offset_reset="earliest",  # FIXME: this should be latest
                 isolation_level="read_committed",
             )
             await consumer.start()
@@ -106,7 +105,7 @@ class Messaging(MessagingABC):
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
-        timeout: float = TIMEOUT,
+        timeout: float = MESSAGING_TIMEOUT,
     ) -> List[T]:
         consumer = await self._get_consumer(topic.name, group_name)
         timeout_ms = int(timeout * 1000)

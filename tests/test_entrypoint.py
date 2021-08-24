@@ -2,7 +2,6 @@ import pytest
 from typing import Type
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.service import Service
 from fastmicro.topic import Topic
 
 from .conftest import UserABC, GreetingABC
@@ -10,7 +9,6 @@ from .conftest import UserABC, GreetingABC
 
 @pytest.mark.asyncio()
 async def test_entrypoint_call(
-    service: Service,
     user: Type[UserABC],
     greeting: Type[GreetingABC],
     user_topic: Topic[UserABC],
@@ -27,7 +25,6 @@ async def test_entrypoint_call(
 
 @pytest.mark.asyncio()
 async def test_entrypoint_call_batch(
-    service: Service,
     user: Type[UserABC],
     greeting: Type[GreetingABC],
     user_topic: Topic[UserABC],
@@ -49,7 +46,6 @@ async def test_entrypoint_call_batch(
 
 @pytest.mark.asyncio()
 async def test_entrypoint_exception(
-    service: Service,
     user: Type[UserABC],
     greeting: Type[GreetingABC],
     user_topic: Topic[UserABC],

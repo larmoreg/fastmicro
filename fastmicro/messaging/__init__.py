@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from fastmicro.env import (
     BATCH_SIZE,
-    TIMEOUT,
+    MESSAGING_TIMEOUT,
 )
 from fastmicro.schema import CustomBaseModel
 from fastmicro.topic import Topic
@@ -47,7 +47,7 @@ class MessagingABC(Generic[T], abc.ABC):
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
-        timeout: float = TIMEOUT,
+        timeout: float = MESSAGING_TIMEOUT,
     ) -> List[T]:
         tasks = [self._receive(topic, group_name, consumer_name) for i in range(batch_size)]
         done, pending = await asyncio.wait(tasks, timeout=timeout)
@@ -108,7 +108,7 @@ class MessagingABC(Generic[T], abc.ABC):
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
-        timeout: float = TIMEOUT,
+        timeout: float = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[List[T]]:
         messages = list()
         try:

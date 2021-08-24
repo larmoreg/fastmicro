@@ -33,7 +33,7 @@ class Service:
         self.entrypoints: Dict[str, Entrypoint] = dict()
 
     def entrypoint(
-        self, topic: Topic[AT], reply_topic: Topic[BT]
+        self, topic: Topic[AT], reply_topic: Topic[BT], broadcast: bool = False
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
             name = callback.__name__

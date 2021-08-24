@@ -478,7 +478,7 @@ redis = ["aioredis"]
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "6182a690ecba575c1da84f3d29bced2b0cd4980efa15cc863a432ebe70acf38f"
+content-hash = "97da782350471353dc4349a162b71e32f520da971966f1405174b92091dc7966"
 
 [metadata.files]
 aioify = [

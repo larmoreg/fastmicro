@@ -1,4 +1,3 @@
-import json
 import os
 
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "0"))
@@ -6,7 +5,7 @@ MESSAGING_TIMEOUT = float(os.getenv("MESSAGING_TIMEOUT", "0"))
 PROCESSING_TIMEOUT = (
     float(os.environ["PROCESSING_TIMEOUT"]) if "PROCESSING_TIMEOUT" in os.environ else None
 )
-RESEND = json.loads(os.getenv("RESEND", "false"))
+RESENDS = int(os.getenv("RESENDS", "0"))
 RETRIES = int(os.getenv("RETRIES", "0"))
 SLEEP_TIME = float(os.getenv("SLEEP_TIME", "0"))
 

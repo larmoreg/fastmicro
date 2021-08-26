@@ -7,7 +7,7 @@ from fastmicro.env import (
     BATCH_SIZE,
     MESSAGING_TIMEOUT,
     PROCESSING_TIMEOUT,
-    RESEND,
+    RESENDS,
     RETRIES,
     SLEEP_TIME,
 )
@@ -54,10 +54,12 @@ class Entrypoint(Generic[AT, BT]):
 
     async def process(
         self,
-        mock: bool = False,
         batch_size: int = BATCH_SIZE,
         messaging_timeout: float = MESSAGING_TIMEOUT,
         processing_timeout: Optional[float] = PROCESSING_TIMEOUT,
+        retries: int = RETRIES,
+        sleep_time: float = SLEEP_TIME,
+        resends: int = RESENDS,
     ) -> None:
         if batch_size:
             async with self.messaging.transaction(self.reply_topic.name):
@@ -73,7 +75,7 @@ class Entrypoint(Generic[AT, BT]):
                             for input_message in input_messages:
                                 logger.debug(f"Processing: {input_message}")
 
-                        attempt = 1
+                        attempt = 0
                         while True:
                             try:
                                 tasks = [
@@ -83,29 +85,33 @@ class Entrypoint(Generic[AT, BT]):
                                     tasks,
                                     timeout=processing_timeout,
                                 )
-                                output_messages = [task.result() for task in done]
-                                break
+                                assert not pending
+                                output_messages = [await task for task in done]
                             except Exception as e:
-                                if mock:
-                                    raise e
-
-                                if RETRIES < 0 or attempt < RETRIES:
-                                    temp = f"{attempt}"
+                                if retries < 0 or attempt < retries:
                                     attempt += 1
-                                    if RETRIES > 0:
-                                        temp += f" / {RETRIES}"
+                                    temp = f"{attempt}"
+                                    if retries > 0:
+                                        temp += f" / {retries}"
                                     logger.exception(f"Processing failed; retry {temp}")
-                                    if SLEEP_TIME:
-                                        await asyncio.sleep(SLEEP_TIME)
-                                        logger.debug(f"Sleeping for {SLEEP_TIME} sec")
+                                    if sleep_time:
+                                        await asyncio.sleep(sleep_time)
+                                        logger.debug(f"Sleeping for {sleep_time} sec")
                                     continue
                                 else:
-                                    if RESEND:
-                                        logger.exception("Processing failed; resending")
+                                    if resends < 0 or input_messages[0].resends < resends:
+                                        for input_message in input_messages:
+                                            input_message.resends += 1
+                                        temp = f"{input_messages[0].resends}"
+                                        if resends > 0:
+                                            temp += f" / {resends}"
+                                        logger.exception(f"Processing failed; resend {temp}")
                                         await self.messaging.send_batch(self.topic, input_messages)
+                                        return
                                     else:
                                         logger.exception("Processing failed; skipping")
-                                    return
+                                        raise e
+                            break
 
                         for input_message, output_message in zip(input_messages, output_messages):
                             output_message.parent = input_message.uuid
@@ -121,7 +127,7 @@ class Entrypoint(Generic[AT, BT]):
                 ) as input_message:
                     logger.debug(f"Processing: {input_message}")
 
-                    attempt = 1
+                    attempt = 0
                     while True:
                         try:
                             output_message = await asyncio.wait_for(
@@ -129,26 +135,28 @@ class Entrypoint(Generic[AT, BT]):
                             )
                             break
                         except Exception as e:
-                            if mock:
-                                raise e
-
-                            if RETRIES < 0 or attempt < RETRIES:
-                                temp = f"{attempt}"
+                            if retries < 0 or attempt < retries:
                                 attempt += 1
-                                if RETRIES > 0:
-                                    temp += f" / {RETRIES}"
+                                temp = f"{attempt}"
+                                if retries > 0:
+                                    temp += f" / {retries}"
                                 logger.exception(f"Processing failed; retry {temp}")
-                                if SLEEP_TIME:
-                                    await asyncio.sleep(SLEEP_TIME)
-                                    logger.debug(f"Sleeping for {SLEEP_TIME} sec")
+                                if sleep_time:
+                                    await asyncio.sleep(sleep_time)
+                                    logger.debug(f"Sleeping for {sleep_time} sec")
                                 continue
                             else:
-                                if RESEND:
-                                    logger.exception("Processing failed; resending")
+                                if resends < 0 or input_message.resends < resends:
+                                    input_message.resends += 1
+                                    temp = f"{input_message.resends}"
+                                    if resends > 0:
+                                        temp += f" / {resends}"
+                                    logger.exception(f"Processing failed; resend {temp}")
                                     await self.messaging.send(self.topic, input_message)
+                                    return
                                 else:
                                     logger.exception("Processing failed; skipping")
-                                return
+                                    raise e
 
                     logger.debug(f"Result: {output_message}")
                     output_message.parent = input_message.uuid
@@ -175,7 +183,7 @@ class Entrypoint(Generic[AT, BT]):
         while True:
             if mock:
                 try:
-                    await self.process(mock=mock)
+                    await self.process()
                 except Exception as e:
                     raise e
 
@@ -214,9 +222,7 @@ class Entrypoint(Generic[AT, BT]):
                 if mock:
                     try:
                         await self.process(
-                            mock=mock,
-                            batch_size=batch_size,
-                            messaging_timeout=messaging_timeout,
+                            batch_size=batch_size, messaging_timeout=messaging_timeout
                         )
                     except Exception as e:
                         raise e

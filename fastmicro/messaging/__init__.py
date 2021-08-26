@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class MessageABC(abc.ABC, CustomBaseModel):
     uuid: Optional[UUID] = Field(None, hidden=True)
     parent: Optional[UUID] = Field(None, hidden=True)
+    resends: Optional[int] = Field(0, hidden=True)
 
 
 T = TypeVar("T", bound=MessageABC)
@@ -51,7 +52,8 @@ class MessagingABC(Generic[T], abc.ABC):
     ) -> List[T]:
         tasks = [self._receive(topic, group_name, consumer_name) for i in range(batch_size)]
         done, pending = await asyncio.wait(tasks, timeout=timeout)
-        return [task.result() for task in done]
+        assert not pending
+        return [await task for task in done]
 
     @abc.abstractmethod
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:

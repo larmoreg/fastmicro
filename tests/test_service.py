@@ -26,7 +26,7 @@ async def test_service_process(
     input_message = user(name="Greg")
     await messaging.send(user_topic, input_message)
 
-    await entrypoint.process(mock=True)
+    await entrypoint.process()
 
     async with messaging.receive(greeting_topic, name, "test") as output_message:
         assert output_message.parent == input_message.uuid
@@ -52,7 +52,7 @@ async def test_service_process_batch(
     input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
     await messaging.send_batch(user_topic, input_messages)
 
-    await entrypoint.process(mock=True, batch_size=2)
+    await entrypoint.process(batch_size=2)
 
     async with messaging.receive_batch(
         greeting_topic, name, "test", batch_size=2
@@ -84,6 +84,123 @@ async def test_service_exception(
     await messaging.send(user_topic, input_message)
 
     with pytest.raises(RuntimeError) as excinfo:
-        await invalid.process(mock=True)
+        await invalid.process()
+
+    assert str(excinfo.value) == "Test"
+
+
+@pytest.mark.asyncio()
+async def test_service_exception_batch(
+    service: Service,
+    messaging: MessagingABC,
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    invalid: Entrypoint[UserABC, GreetingABC],
+) -> None:
+    name = service.name + "_" + invalid.callback.__name__
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
+
+    input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
+    await messaging.send_batch(user_topic, input_messages)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await invalid.process(batch_size=2)
+
+    assert str(excinfo.value) == "Test"
+
+
+@pytest.mark.asyncio()
+async def test_service_retry(
+    service: Service,
+    messaging: MessagingABC,
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    invalid: Entrypoint[UserABC, GreetingABC],
+) -> None:
+    name = service.name + "_" + invalid.callback.__name__
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
+
+    input_message = user(name="Greg")
+    await messaging.send(user_topic, input_message)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await invalid.process(retries=1, sleep_time=1)
+
+    assert str(excinfo.value) == "Test"
+
+
+@pytest.mark.asyncio()
+async def test_service_retry_batch(
+    service: Service,
+    messaging: MessagingABC,
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    invalid: Entrypoint[UserABC, GreetingABC],
+) -> None:
+    name = service.name + "_" + invalid.callback.__name__
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
+
+    input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
+    await messaging.send_batch(user_topic, input_messages)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        await invalid.process(batch_size=2, retries=1, sleep_time=1)
+
+    assert str(excinfo.value) == "Test"
+
+
+@pytest.mark.asyncio()
+async def test_service_resend(
+    service: Service,
+    messaging: MessagingABC,
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    invalid: Entrypoint[UserABC, GreetingABC],
+) -> None:
+    name = service.name + "_" + invalid.callback.__name__
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
+
+    input_message = user(name="Greg")
+    await messaging.send(user_topic, input_message)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        for i in range(2):
+            await invalid.process(resends=1)
+
+    assert str(excinfo.value) == "Test"
+
+
+@pytest.mark.asyncio()
+async def test_service_resend_batch(
+    service: Service,
+    messaging: MessagingABC,
+    user: Type[UserABC],
+    greeting: Type[GreetingABC],
+    user_topic: Topic[UserABC],
+    greeting_topic: Topic[GreetingABC],
+    invalid: Entrypoint[UserABC, GreetingABC],
+) -> None:
+    name = service.name + "_" + invalid.callback.__name__
+    await messaging.subscribe(user_topic.name, name)
+    await messaging.subscribe(greeting_topic.name, name)
+
+    input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
+    await messaging.send_batch(user_topic, input_messages)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        for i in range(2):
+            await invalid.process(batch_size=2, resends=1)
 
     assert str(excinfo.value) == "Test"

@@ -32,12 +32,14 @@ class Entrypoint(Generic[AT, BT]):
         broadcast: bool = False,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
-        self.name = name if not broadcast else name + "_" + consumer_name
+        self.name = name
         self.messaging = messaging
         self.callback = callback
         self.topic = topic
         self.reply_topic = reply_topic
         self.consumer_name = consumer_name
+        self.broadcast = broadcast
+        self.broadcast_name = name + "_" + consumer_name
         self.loop = loop
         self.task: Optional[asyncio.Task[None]] = None
 
@@ -65,7 +67,7 @@ class Entrypoint(Generic[AT, BT]):
             async with self.messaging.transaction(self.reply_topic.name):
                 async with self.messaging.receive_batch(
                     self.topic,
-                    self.name,
+                    self.name if not self.broadcast else self.broadcast_name,
                     self.consumer_name,
                     batch_size=batch_size,
                     timeout=messaging_timeout,
@@ -123,7 +125,9 @@ class Entrypoint(Generic[AT, BT]):
         else:
             async with self.messaging.transaction(self.reply_topic.name):
                 async with self.messaging.receive(
-                    self.topic, self.name, self.consumer_name
+                    self.topic,
+                    self.name if not self.broadcast else self.broadcast_name,
+                    self.consumer_name,
                 ) as input_message:
                     logger.debug(f"Processing: {input_message}")
 
@@ -174,8 +178,8 @@ class Entrypoint(Generic[AT, BT]):
 
     async def call(self, input_message: AT, mock: bool = False) -> BT:
         if mock:
-            await self.messaging.subscribe(self.topic.name, self.name)
-        await self.messaging.subscribe(self.reply_topic.name, self.name)
+            await self.messaging.subscribe(self.topic.name, self.broadcast_name)
+        await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)
 
         logger.debug(f"Calling: {input_message}")
         await self.messaging.send(self.topic, input_message)
@@ -188,7 +192,7 @@ class Entrypoint(Generic[AT, BT]):
                     raise e
 
             async with self.messaging.receive(
-                self.reply_topic, self.name, self.consumer_name
+                self.reply_topic, self.broadcast_name, self.consumer_name
             ) as output_message:
                 if output_message.parent == input_message.uuid:
                     break
@@ -204,8 +208,8 @@ class Entrypoint(Generic[AT, BT]):
         messaging_timeout: float = MESSAGING_TIMEOUT,
     ) -> List[BT]:
         if mock:
-            await self.messaging.subscribe(self.topic.name, self.name)
-        await self.messaging.subscribe(self.reply_topic.name, self.name)
+            await self.messaging.subscribe(self.topic.name, self.broadcast_name)
+        await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)
 
         output_messages: List[BT] = list()
         for i in range(0, len(input_messages), batch_size):
@@ -229,7 +233,7 @@ class Entrypoint(Generic[AT, BT]):
 
                 async with self.messaging.receive_batch(
                     self.reply_topic,
-                    self.name,
+                    self.broadcast_name,
                     self.consumer_name,
                     batch_size=batch_size,
                     timeout=messaging_timeout,

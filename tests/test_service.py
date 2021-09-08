@@ -1,4 +1,4 @@
-import asyncio.exceptions
+import asyncio
 import logging
 import pytest
 from typing import Type
@@ -114,7 +114,7 @@ async def test_service_timeout(
     input_message = user(name="Greg", delay=2)
     await messaging.send(user_topic, input_message)
 
-    with pytest.raises(asyncio.exceptions.TimeoutError):
+    with pytest.raises(asyncio.TimeoutError):
         with caplog.at_level(logging.ERROR, logger="fastmicro.entrypoint"):
             await entrypoint.process(processing_timeout=1)
 

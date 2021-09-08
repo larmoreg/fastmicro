@@ -172,7 +172,7 @@ class Entrypoint(Generic[AT, BT]):
         while True:
             try:
                 await self.process()
-            except asyncio.exceptions.CancelledError:
+            except asyncio.CancelledError:
                 break
             except Exception:
                 pass

@@ -1,4 +1,5 @@
 import asyncio
+from copy import deepcopy
 import logging
 from typing import Awaitable, Callable, cast, Generic, List, Optional, TypeVar
 from uuid import uuid4
@@ -177,6 +178,9 @@ class Entrypoint(Generic[AT, BT]):
                 pass
 
     async def call(self, input_message: AT, mock: bool = False) -> BT:
+        if input_message.uuid is not None:
+            input_message = deepcopy(input_message)
+
         if mock:
             await self.messaging.subscribe(self.topic.name, self.broadcast_name)
         await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)
@@ -207,6 +211,11 @@ class Entrypoint(Generic[AT, BT]):
         batch_size: int = BATCH_SIZE,
         messaging_timeout: float = MESSAGING_TIMEOUT,
     ) -> List[BT]:
+        input_messages = [
+            deepcopy(input_message) if input_message.uuid is not None else input_message
+            for input_message in input_messages
+        ]
+
         if mock:
             await self.messaging.subscribe(self.topic.name, self.broadcast_name)
         await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)

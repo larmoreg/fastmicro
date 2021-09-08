@@ -3,7 +3,7 @@ import atexit
 from functools import partial
 import logging
 import signal
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, List, Optional
 import uvloop
 
 from fastmicro.entrypoint import AT, BT, Entrypoint
@@ -30,18 +30,14 @@ class Service:
 
         self.name = name
         self.messaging = messaging
-        self.entrypoints: Dict[str, Entrypoint] = dict()
+        self.entrypoints: List[Entrypoint] = list()
 
     def entrypoint(
         self, topic: Topic[AT], reply_topic: Topic[BT], **kwargs: Any
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
-            name = callback.__name__
-            if name in self.entrypoints:
-                raise ValueError(f"Function {name} already registered in service {self.name}")
-
             entrypoint = Entrypoint(
-                self.name + "_" + name,
+                self.name + "_" + callback.__name__,
                 self.messaging,
                 callback,
                 topic,
@@ -49,7 +45,7 @@ class Service:
                 loop=self.loop,
                 **kwargs,
             )
-            self.entrypoints[name] = entrypoint
+            self.entrypoints.append(entrypoint)
             return entrypoint
 
         return _entrypoint
@@ -57,7 +53,7 @@ class Service:
     async def start(self) -> None:
         await self.messaging.connect()
 
-        tasks = [entrypoint.start() for entrypoint in self.entrypoints.values()]
+        tasks = [entrypoint.start() for entrypoint in self.entrypoints]
         await asyncio.gather(*tasks)
 
     def run(self) -> None:
@@ -66,7 +62,7 @@ class Service:
         self.loop.run_forever()
 
     async def stop(self) -> None:
-        tasks = [entrypoint.stop() for entrypoint in self.entrypoints.values()]
+        tasks = [entrypoint.stop() for entrypoint in self.entrypoints]
         await asyncio.gather(*tasks)
 
         await self.messaging.cleanup()

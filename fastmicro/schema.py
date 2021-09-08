@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import TYPE_CHECKING, Union
+from typing import Any, TYPE_CHECKING, Union
 
 if TYPE_CHECKING:
     from pydantic.typing import AbstractSetIntStr, DictStrAny, MappingIntStrAny
@@ -8,10 +8,10 @@ if TYPE_CHECKING:
 class CustomBaseModel(BaseModel):
     def dict(
         self,
-        *,
+        *args: Any,
         exclude_hidden: bool = True,
-        exclude: Union["AbstractSetIntStr", "MappingIntStrAny"] = None,
-        **kwargs,
+        exclude: Union["AbstractSetIntStr", "MappingIntStrAny", Any] = None,
+        **kwargs: Any,
     ) -> "DictStrAny":
         if exclude_hidden:
             temp: AbstractSetIntStr = {

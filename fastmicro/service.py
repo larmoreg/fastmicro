@@ -3,7 +3,7 @@ import atexit
 from functools import partial
 import logging
 import signal
-from typing import Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 import uvloop
 
 from fastmicro.entrypoint import AT, BT, Entrypoint
@@ -33,7 +33,7 @@ class Service:
         self.entrypoints: Dict[str, Entrypoint] = dict()
 
     def entrypoint(
-        self, topic: Topic[AT], reply_topic: Topic[BT], broadcast: bool = False
+        self, topic: Topic[AT], reply_topic: Topic[BT], **kwargs: Any
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
             name = callback.__name__
@@ -47,6 +47,7 @@ class Service:
                 topic,
                 reply_topic,
                 loop=self.loop,
+                **kwargs,
             )
             self.entrypoints[name] = entrypoint
             return entrypoint

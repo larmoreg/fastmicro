@@ -33,7 +33,9 @@ async def test_entrypoint_call_batch(
 ) -> None:
     input_messages = [user(name="Greg", delay=2), user(name="Cara", delay=1)]
 
-    output_messages = await entrypoint.call_batch(input_messages, mock=True, batch_size=2)
+    output_messages = await entrypoint.call_batch(
+        input_messages, mock=True, batch_size=2
+    )
 
     assert len(output_messages) == len(input_messages)
     for input_message, output_message in zip(

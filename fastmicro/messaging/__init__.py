@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 from pydantic import Field
 from typing import AsyncIterator, Generic, List, Optional, TypeVar
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastmicro.env import (
     BATCH_SIZE,
@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class MessageABC(abc.ABC, CustomBaseModel):
-    uuid: Optional[UUID] = Field(None, hidden=True)
-    parent: Optional[UUID] = Field(None, hidden=True)
+    correlation_id: Optional[UUID] = Field(None, hidden=True)
     resends: Optional[int] = Field(0, hidden=True)
 
 
@@ -50,7 +49,9 @@ class MessagingABC(Generic[T], abc.ABC):
         batch_size: int = BATCH_SIZE,
         timeout: float = MESSAGING_TIMEOUT,
     ) -> List[T]:
-        tasks = [self._receive(topic, group_name, consumer_name) for i in range(batch_size)]
+        tasks = [
+            self._receive(topic, group_name, consumer_name) for i in range(batch_size)
+        ]
         done, pending = await asyncio.wait(tasks, timeout=timeout)
         assert not pending
         return [await task for task in done]
@@ -59,7 +60,9 @@ class MessagingABC(Generic[T], abc.ABC):
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
         raise NotImplementedError
 
-    async def _ack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+    async def _ack_batch(
+        self, topic_name: str, group_name: str, messages: List[T]
+    ) -> None:
         tasks = [self._ack(topic_name, group_name, message) for message in messages]
         await asyncio.gather(*tasks)
 
@@ -67,7 +70,9 @@ class MessagingABC(Generic[T], abc.ABC):
     async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         raise NotImplementedError
 
-    async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+    async def _nack_batch(
+        self, topic_name: str, group_name: str, messages: List[T]
+    ) -> None:
         tasks = [self._nack(topic_name, group_name, message) for message in messages]
         await asyncio.gather(*tasks)
 
@@ -91,15 +96,15 @@ class MessagingABC(Generic[T], abc.ABC):
         try:
             await self.subscribe(topic.name, group_name)
             message = await self._receive(topic, group_name, consumer_name)
-            logger.debug(f"Received {message.uuid}")
+            logger.debug(f"Received {message}")
 
             yield message
 
-            logger.debug(f"Acking {message.uuid}")
+            logger.debug(f"Acking {message}")
             await self._ack(topic.name, group_name, message)
         except Exception as e:
             if message:
-                logger.debug(f"Nacking {message.uuid}")
+                logger.debug(f"Nacking {message}")
                 await self._nack(topic.name, group_name, message)
             raise e
 
@@ -121,13 +126,13 @@ class MessagingABC(Generic[T], abc.ABC):
             if messages:
                 if logger.level >= logging.DEBUG:
                     for message in messages:
-                        logger.debug(f"Received {message.uuid}")
+                        logger.debug(f"Received {message}")
 
                 yield messages
 
                 if logger.level >= logging.DEBUG:
                     for message in messages:
-                        logger.debug(f"Acking {message.uuid}")
+                        logger.debug(f"Acking {message}")
                 await self._ack_batch(topic.name, group_name, messages)
             else:
                 yield messages
@@ -135,20 +140,16 @@ class MessagingABC(Generic[T], abc.ABC):
             if messages:
                 if logger.level >= logging.DEBUG:
                     for message in messages:
-                        logger.debug(f"Nacking {message.uuid}")
+                        logger.debug(f"Nacking {message}")
                 await self._nack_batch(topic.name, group_name, messages)
             raise e
 
     async def send(self, topic: Topic[T], message: T) -> None:
-        message.uuid = uuid4()
-        logger.debug(f"Sending {message.uuid}")
+        logger.debug(f"Sending {message}")
         await self._send(topic, message)
 
     async def send_batch(self, topic: Topic[T], messages: List[T]) -> None:
-        for message in messages:
-            message.uuid = uuid4()
-
         if logger.level >= logging.DEBUG:
             for message in messages:
-                logger.debug(f"Sending {message.uuid}")
+                logger.debug(f"Sending {message}")
         await self._send_batch(topic, messages)

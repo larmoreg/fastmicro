@@ -58,7 +58,9 @@ class Messaging(MessagingABC):
         tasks = [producer.stop() for producer in self.producers.values()]
         await asyncio.gather(*tasks)
 
-    async def _get_consumer(self, topic_name: str, group_name: str) -> aiokafka.AIOKafkaConsumer:
+    async def _get_consumer(
+        self, topic_name: str, group_name: str
+    ) -> aiokafka.AIOKafkaConsumer:
         key = topic_name, group_name
         if key not in self.consumers:
             consumer = aiokafka.AIOKafkaConsumer(
@@ -88,7 +90,9 @@ class Messaging(MessagingABC):
         await self._get_consumer(topic_name, group_name)
 
     @staticmethod
-    async def _raw_receive(topic: Topic[T], temp_message: aiokafka.structs.ConsumerRecord) -> T:
+    async def _raw_receive(
+        topic: Topic[T], temp_message: aiokafka.structs.ConsumerRecord
+    ) -> T:
         message = await topic.deserialize(temp_message.value)
         message.partition = temp_message.partition
         message.offset = temp_message.offset
@@ -133,7 +137,9 @@ class Messaging(MessagingABC):
             consumer = await self._get_consumer(topic_name, group_name)
             await consumer.commit(offsets)
 
-    async def _ack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+    async def _ack_batch(
+        self, topic_name: str, group_name: str, messages: List[T]
+    ) -> None:
         partitions = set(map(lambda x: x.partition, messages))
         offsets = {
             aiokafka.TopicPartition(topic_name, partition): max(
@@ -155,11 +161,15 @@ class Messaging(MessagingABC):
     async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         pass
 
-    async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+    async def _nack_batch(
+        self, topic_name: str, group_name: str, messages: List[T]
+    ) -> None:
         pass
 
     @staticmethod
-    async def _raw_send(producer: aiokafka.AIOKafkaProducer, topic: Topic[T], message: T) -> None:
+    async def _raw_send(
+        producer: aiokafka.AIOKafkaProducer, topic: Topic[T], message: T
+    ) -> None:
         serialized = await topic.serialize(message)
         await producer.send(topic.name, serialized)
 

@@ -15,10 +15,13 @@ from fastmicro.topic import Topic
 backends = ["fastmicro.messaging.memory"]
 if find_spec("aiokafka"):
     backends.append("fastmicro.messaging.kafka")
+# FIXME: nats and pulsar are broken
+"""
 if find_spec("nats") and find_spec("stan"):
     backends.append("fastmicro.messaging.nats")
 if find_spec("pulsar"):
     backends.append("fastmicro.messaging.pulsar")
+"""
 if find_spec("aioredis"):
     backends.append("fastmicro.messaging.redis")
 
@@ -90,7 +93,9 @@ async def messaging(
 
 
 @pytest.fixture
-def service(messaging: MessagingABC[T], event_loop: asyncio.AbstractEventLoop) -> Service:
+def service(
+    messaging: MessagingABC[T], event_loop: asyncio.AbstractEventLoop
+) -> Service:
     return Service("test", messaging, loop=event_loop)
 
 

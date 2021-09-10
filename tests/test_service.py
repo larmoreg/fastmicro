@@ -31,7 +31,7 @@ async def test_service_process(
     await entrypoint.process()
 
     async with messaging.receive(greeting_topic, name, "test") as output_message:
-        assert output_message.parent == input_message.uuid
+        assert output_message.correlation_id == input_message.correlation_id
         assert output_message
         assert output_message.name == input_message.name
         assert output_message.greeting == f"Hello, {input_message.name}!"

@@ -61,8 +61,10 @@ msgpack = ["msgpack"]
 nats = ["asyncio-nats-client", "asyncio-nats-streaming", "wheel"]
 pulsar = ["aioify", "fastavro", "pulsar-client"]
 redis = ["aioredis"]
+all = ["aioify", "aiokafka", "aioredis", "asyncio-nats-client", "asyncio-nats-streaming", "cbor2", "fastavro", "msgpack", "pulsar-client", "wheel"]
 
 [tool.poetry.dev-dependencies]
+black = "^21.8b0"
 mypy = "^0.812"
 pytest = "^6.2.4"
 pytest-asyncio = "^0.14.0"

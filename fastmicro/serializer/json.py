@@ -11,4 +11,7 @@ class Serializer(SerializerABC):
 
     @classmethod
     async def deserialize(cls, data: bytes) -> Dict[Any, Any]:
-        return cast(Dict[Any, Any], json.loads(data.decode(), object_hook=cls.decode))
+        return cast(
+            Dict[Any, Any],
+            json.loads(data.decode(), object_hook=cls.decode),
+        )

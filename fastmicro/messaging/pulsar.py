@@ -46,7 +46,9 @@ class Messaging(MessagingABC):
 
     async def _get_producer(self, topic_name: str) -> aiopulsar.Producer:  # type: ignore
         if topic_name not in self.producers:
-            producer = await self.client.create_producer(topic_name, batching_enabled=True)
+            producer = await self.client.create_producer(
+                topic_name, batching_enabled=True
+            )
             self.producers[topic_name] = aioify(obj=producer, name="aioproducer")
         return self.producers[topic_name]
 

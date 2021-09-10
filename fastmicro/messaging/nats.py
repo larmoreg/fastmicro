@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 from nats.aio.client import Client as NATS
@@ -125,7 +127,9 @@ class Messaging(MessagingABC):
     async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         pass
 
-    async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+    async def _nack_batch(
+        self, topic_name: str, group_name: str, messages: List[T]
+    ) -> None:
         pass
 
     async def _send(self, topic: Topic[T], message: T) -> None:

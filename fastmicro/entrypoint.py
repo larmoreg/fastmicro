@@ -82,7 +82,8 @@ class Entrypoint(Generic[AT, BT]):
                         while True:
                             try:
                                 tasks = [
-                                    self.callback(input_message) for input_message in input_messages
+                                    self.callback(input_message)
+                                    for input_message in input_messages
                                 ]
                                 done, pending = await asyncio.wait(
                                     tasks,
@@ -102,27 +103,41 @@ class Entrypoint(Generic[AT, BT]):
                                         logger.debug(f"Sleeping for {sleep_time} sec")
                                     continue
                                 else:
-                                    if resends < 0 or input_messages[0].resends < resends:
+                                    if (
+                                        resends < 0
+                                        or input_messages[0].resends < resends
+                                    ):
                                         for input_message in input_messages:
                                             input_message.resends += 1
                                         temp = f"{input_messages[0].resends}"
                                         if resends > 0:
                                             temp += f" / {resends}"
-                                        logger.exception(f"Processing failed; resend {temp}")
-                                        await self.messaging.send_batch(self.topic, input_messages)
+                                        logger.exception(
+                                            f"Processing failed; resend {temp}"
+                                        )
+                                        await self.messaging.send_batch(
+                                            self.topic, input_messages
+                                        )
                                         return
                                     else:
                                         logger.exception("Processing failed; skipping")
                                         raise e
                             break
 
-                        for input_message, output_message in zip(input_messages, output_messages):
-                            output_message.parent = input_message.uuid
+                        for input_message, output_message in zip(
+                            input_messages, output_messages
+                        ):
+                            if input_message.correlation_id:
+                                output_message.correlation_id = (
+                                    input_message.correlation_id
+                                )
 
                         if logger.level >= logging.DEBUG:
                             for output_message in output_messages:
                                 logger.debug(f"Result: {output_message}")
-                        await self.messaging.send_batch(self.reply_topic, output_messages)
+                        await self.messaging.send_batch(
+                            self.reply_topic, output_messages
+                        )
         else:
             async with self.messaging.transaction(self.reply_topic.name):
                 async with self.messaging.receive(
@@ -156,16 +171,19 @@ class Entrypoint(Generic[AT, BT]):
                                     temp = f"{input_message.resends}"
                                     if resends > 0:
                                         temp += f" / {resends}"
-                                    logger.exception(f"Processing failed; resend {temp}")
+                                    logger.exception(
+                                        f"Processing failed; resend {temp}"
+                                    )
                                     await self.messaging.send(self.topic, input_message)
                                     return
                                 else:
                                     logger.exception("Processing failed; skipping")
                                     raise e
 
-                    logger.debug(f"Result: {output_message}")
-                    output_message.parent = input_message.uuid
+                    if input_message.correlation_id:
+                        output_message.correlation_id = input_message.correlation_id
 
+                    logger.debug(f"Result: {output_message}")
                     await self.messaging.send(self.reply_topic, output_message)
 
     async def process_loop(self) -> None:
@@ -178,8 +196,9 @@ class Entrypoint(Generic[AT, BT]):
                 pass
 
     async def call(self, input_message: AT, mock: bool = False) -> BT:
-        if input_message.uuid is not None:
+        if input_message.correlation_id is not None:
             input_message = deepcopy(input_message)
+        input_message.correlation_id = uuid4()
 
         if mock:
             await self.messaging.subscribe(self.topic.name, self.broadcast_name)
@@ -198,7 +217,7 @@ class Entrypoint(Generic[AT, BT]):
             async with self.messaging.receive(
                 self.reply_topic, self.broadcast_name, self.consumer_name
             ) as output_message:
-                if output_message.parent == input_message.uuid:
+                if output_message.correlation_id == input_message.correlation_id:
                     break
 
         logger.debug(f"Result: {output_message}")
@@ -211,10 +230,11 @@ class Entrypoint(Generic[AT, BT]):
         batch_size: int = BATCH_SIZE,
         messaging_timeout: float = MESSAGING_TIMEOUT,
     ) -> List[BT]:
-        input_messages = [
-            deepcopy(input_message) if input_message.uuid is not None else input_message
-            for input_message in input_messages
-        ]
+        for i, input_message in enumerate(input_messages):
+            if input_message.correlation_id is not None:
+                input_message = deepcopy(input_message)
+                input_messages[i] = input_message
+            input_message.correlation_id = uuid4()
 
         if mock:
             await self.messaging.subscribe(self.topic.name, self.broadcast_name)
@@ -230,8 +250,10 @@ class Entrypoint(Generic[AT, BT]):
                     logger.debug(f"Calling: {input_message}")
             await self.messaging.send_batch(self.topic, temp_input_messages)
 
-            input_message_uuids = set(input_message.uuid for input_message in temp_input_messages)
-            while input_message_uuids:
+            input_message_correlation_ids = set(
+                input_message.correlation_id for input_message in temp_input_messages
+            )
+            while input_message_correlation_ids:
                 if mock:
                     try:
                         await self.process(
@@ -249,8 +271,13 @@ class Entrypoint(Generic[AT, BT]):
                 ) as temp_output_messages:
                     if temp_output_messages:
                         for output_message in temp_output_messages:
-                            if output_message.parent in input_message_uuids:
-                                input_message_uuids.remove(output_message.parent)
+                            if (
+                                output_message.correlation_id
+                                in input_message_correlation_ids
+                            ):
+                                input_message_correlation_ids.remove(
+                                    output_message.correlation_id
+                                )
                                 output_messages.append(output_message)
 
         if logger.level >= logging.DEBUG:

@@ -65,7 +65,9 @@ class Messaging(MessagingABC):
     async def _group_exists(self, topic_name: str, group_name: str) -> bool:
         assert self.redis
         group_infos = await self.redis.xinfo_groups(topic_name)
-        if any(group_info[b"name"] == group_name.encode() for group_info in group_infos):
+        if any(
+            group_info[b"name"] == group_name.encode() for group_info in group_infos
+        ):
             return True
         return False
 
@@ -74,7 +76,9 @@ class Messaging(MessagingABC):
             topic_name, group_name
         ):
             assert self.redis
-            await self.redis.xgroup_create(topic_name, group_name, latest_id="$", mkstream=True)
+            await self.redis.xgroup_create(
+                topic_name, group_name, latest_id="$", mkstream=True
+            )
 
     async def subscribe(self, topic_name: str, group_name: str) -> None:
         await self._create_group(topic_name, group_name)
@@ -112,7 +116,8 @@ class Messaging(MessagingABC):
         )
 
         tasks = [
-            self._raw_receive(topic, message, message_id) for stream, message_id, message in temp
+            self._raw_receive(topic, message, message_id)
+            for stream, message_id, message in temp
         ]
         messages = await asyncio.gather(*tasks)
         return messages
@@ -120,7 +125,9 @@ class Messaging(MessagingABC):
     async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
         await self._ack_batch(topic_name, group_name, [message])
 
-    async def _ack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+    async def _ack_batch(
+        self, topic_name: str, group_name: str, messages: List[T]
+    ) -> None:
         assert self.redis
         message_ids = [message.message_id for message in messages]
         await self.redis.xack(topic_name, group_name, *message_ids)
@@ -128,11 +135,15 @@ class Messaging(MessagingABC):
     async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
         pass
 
-    async def _nack_batch(self, topic_name: str, group_name: str, messages: List[T]) -> None:
+    async def _nack_batch(
+        self, topic_name: str, group_name: str, messages: List[T]
+    ) -> None:
         pass
 
     @staticmethod
-    async def _raw_send(transaction: Optional[Any], topic: Topic[T], message: T) -> None:
+    async def _raw_send(
+        transaction: Optional[Any], topic: Topic[T], message: T
+    ) -> None:
         assert transaction
         serialized = await topic.serialize(message)
         transaction.xadd(topic.name, {"data": serialized})
@@ -143,7 +154,9 @@ class Messaging(MessagingABC):
 
     async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
         async with self.transaction(topic.name) as transaction:
-            tasks = [self._raw_send(transaction, topic, message) for message in messages]
+            tasks = [
+                self._raw_send(transaction, topic, message) for message in messages
+            ]
             await asyncio.gather(*tasks)
 
     @asynccontextmanager

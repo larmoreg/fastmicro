@@ -98,10 +98,14 @@ class Messaging(MessagingABC):
         return header, message
 
     async def _receive(
-        self, topic: Topic[T], group_name: str, consumer_name: str
+        self,
+        topic: Topic[T],
+        group_name: str,
+        consumer_name: str,
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> Tuple[Header, T]:
         consumer = await self._get_consumer(topic.name, group_name)
-        message = await consumer.getone()
+        message = await asyncio.wait_for(consumer.getone(), timeout=timeout)
         return await self._raw_receive(topic, message)
 
     async def _receive_batch(

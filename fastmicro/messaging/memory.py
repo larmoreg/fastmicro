@@ -9,6 +9,7 @@ from typing import (
     TypeVar,
 )
 
+from fastmicro.env import MESSAGING_TIMEOUT
 from fastmicro.messaging import HeaderABC, HT, MessagingABC
 from fastmicro.topic import T, Topic
 
@@ -82,10 +83,14 @@ class Messaging(MessagingABC):
         return self.queues[topic_name]
 
     async def _receive(
-        self, topic: Topic[T], group_name: str, consumer_name: str
+        self,
+        topic: Topic[T],
+        group_name: str,
+        consumer_name: str,
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> Tuple[Header, T]:
         queue = await self._get_queue(topic.name)
-        message_id, serialized = await queue.get()
+        message_id, serialized = await asyncio.wait_for(queue.get(), timeout=timeout)
         header = await header_topic.deserialize(serialized)
         header.message_id = message_id
 

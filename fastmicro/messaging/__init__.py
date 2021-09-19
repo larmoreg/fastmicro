@@ -43,7 +43,11 @@ class MessagingABC(abc.ABC):
 
     @abc.abstractmethod
     async def _receive(
-        self, topic: Topic[T], group_name: str, consumer_name: str
+        self,
+        topic: Topic[T],
+        group_name: str,
+        consumer_name: str,
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> Tuple[HT, T]:
         raise NotImplementedError
 
@@ -56,7 +60,8 @@ class MessagingABC(abc.ABC):
         timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> Tuple[List[HT], List[T]]:
         tasks = [
-            self._receive(topic, group_name, consumer_name) for i in range(batch_size)
+            self._receive(topic, group_name, consumer_name, timeout)
+            for i in range(batch_size)
         ]
         temp = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
         headers, messages = zip(*temp)
@@ -97,11 +102,17 @@ class MessagingABC(abc.ABC):
 
     @asynccontextmanager
     async def receive(
-        self, topic: Topic[T], group_name: str, consumer_name: str
+        self,
+        topic: Topic[T],
+        group_name: str,
+        consumer_name: str,
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[Tuple[HT, T]]:
         try:
             await self.subscribe(topic.name, group_name)
-            header, message = await self._receive(topic, group_name, consumer_name)
+            header, message = await self._receive(
+                topic, group_name, consumer_name, timeout
+            )
             logger.debug(f"Received {header}: {message}")
 
             yield header, message

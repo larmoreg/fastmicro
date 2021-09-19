@@ -143,6 +143,7 @@ class Entrypoint(Generic[AT, BT]):
                 self.topic,
                 self.name if not self.broadcast else self.broadcast_name,
                 self.consumer_name,
+                timeout=messaging_timeout,
             ) as (input_header, input_message):
                 logger.debug(f"Processing: {input_message}")
 
@@ -197,7 +198,13 @@ class Entrypoint(Generic[AT, BT]):
         while True:
             await self.process()
 
-    async def call(self, input_message: AT, *args: Any, **kwargs: Any) -> BT:
+    async def call(
+        self,
+        input_message: AT,
+        *args: Any,
+        messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
+        **kwargs: Any,
+    ) -> BT:
         input_header = self.messaging.header_type(correlation_id=uuid4())
 
         await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)
@@ -207,7 +214,10 @@ class Entrypoint(Generic[AT, BT]):
 
         while True:
             async with self.messaging.receive(
-                self.reply_topic, self.broadcast_name, self.consumer_name
+                self.reply_topic,
+                self.broadcast_name,
+                self.consumer_name,
+                timeout=messaging_timeout,
             ) as (output_header, output_message):
                 if output_header.correlation_id == input_header.correlation_id:
                     break

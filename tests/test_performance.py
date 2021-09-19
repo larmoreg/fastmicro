@@ -1,45 +1,98 @@
+import asyncio
 import logging
 import pytest
-from typing import Type
+from timeit import default_timer as timer
+from uuid import uuid4
 
 from fastmicro.entrypoint import Entrypoint
 from fastmicro.messaging import MessagingABC
-from fastmicro.service import Service
-from fastmicro.topic import Topic
 
-from .conftest import UserABC, GreetingABC
+from .conftest import User, Greeting
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.asyncio()
-async def test_entrypoint_call_performance(
-    service: Service,
+@pytest.mark.asyncio
+async def test_serializer_performance(serializer_type) -> None:
+    input_messages = [User(name=f"{i}") for i in range(1000)]
+
+    tasks = [
+        serializer_type.serialize(input_message.dict())
+        for input_message in input_messages
+    ]
+    start = timer()
+    temp_messages = await asyncio.gather(*tasks)
+    end = timer()
+    diff1 = end - start
+
+    tasks = [
+        serializer_type.deserialize(temp_message) for temp_message in temp_messages
+    ]
+    start = timer()
+    output_messages = await asyncio.gather(*tasks)
+    end = timer()
+    diff2 = end - start
+
+    diff = diff1 + diff2
+    logger.info(f"{diff}s elapsed")
+    logger.info("{} messages / s".format(1000 / diff))
+
+    assert input_messages == output_messages
+
+
+@pytest.mark.skip
+@pytest.mark.asyncio
+async def test_entrypoint_process_performance(
     messaging: MessagingABC,
-    user: Type[UserABC],
-    greeting: Type[GreetingABC],
-    user_topic: Topic[UserABC],
-    greeting_topic: Topic[GreetingABC],
-    entrypoint: Entrypoint[UserABC, GreetingABC],
+    _entrypoint: Entrypoint[User, Greeting],
 ) -> None:
-    from timeit import default_timer as timer
+    await messaging.connect()
 
-    name = service.name + "_" + entrypoint.callback.__name__
-    await messaging.subscribe(user_topic.name, name)
-    await messaging.subscribe(greeting_topic.name, name)
+    await messaging.subscribe(_entrypoint.topic.name, _entrypoint.name)
+    await messaging.subscribe(_entrypoint.reply_topic.name, _entrypoint.broadcast_name)
 
-    input_messages = [user(name=f"Test{i}") for i in range(1000)]
+    input_headers = [messaging.header_type(correlation_id=uuid4()) for i in range(1000)]
+    input_messages = [User(name=f"{i}") for i in range(1000)]
+    await messaging.send_batch(_entrypoint.topic, input_headers, input_messages)
+
+    start = timer()
+    await _entrypoint.process(batch_size=1000)
+    end = timer()
+
+    diff = end - start
+    logger.info(f"{diff}s elapsed")
+    logger.info("{} messages / s".format(1000 / diff))
+
+    async with messaging.receive_batch(
+        _entrypoint.reply_topic,
+        _entrypoint.broadcast_name,
+        _entrypoint.consumer_name,
+        batch_size=1000,
+    ) as (output_headers, output_messages):
+        assert len(output_messages) == len(input_messages)
+        for input_message, output_message in zip(
+            input_messages, sorted(output_messages, key=lambda x: int(x.name))
+        ):
+            assert output_message.name == input_message.name
+            assert output_message.greeting == f"Hello, {input_message.name}!"
+
+    await messaging.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_entrypoint_call_performance(
+    entrypoint: Entrypoint[User, Greeting],
+) -> None:
+    input_messages = [User(name=f"{i}") for i in range(1000)]
 
     output_message = await entrypoint.call(
         input_messages[0],
-        mock=True,
     )
 
     start = timer()
     output_messages = await entrypoint.call_batch(
         input_messages,
-        mock=True,
-        batch_size=100,
+        batch_size=1000,
     )
     end = timer()
 
@@ -49,8 +102,7 @@ async def test_entrypoint_call_performance(
 
     assert len(output_messages) == len(input_messages)
     for input_message, output_message in zip(
-        sorted(input_messages, key=lambda x: str(x.name)),
-        sorted(output_messages, key=lambda x: str(x.name)),
+        input_messages, sorted(output_messages, key=lambda x: int(x.name))
     ):
         assert output_message.name == input_message.name
         assert output_message.greeting == f"Hello, {input_message.name}!"

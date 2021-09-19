@@ -1,29 +1,29 @@
 import logging
+from pydantic import BaseModel
 from typing import Generic, Type, TypeVar
 
-from fastmicro.schema import CustomBaseModel
 from fastmicro.serializer import SerializerABC
 from fastmicro.serializer.json import Serializer
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=CustomBaseModel)
+T = TypeVar("T", bound=BaseModel)
 
 
 class Topic(Generic[T]):
     def __init__(
         self,
         name: str,
-        schema: Type[T],
-        serializer: Type[SerializerABC] = Serializer,
+        schema_type: Type[T],
+        serializer_type: Type[SerializerABC] = Serializer,
     ):
         self.name = name
-        self.schema = schema
-        self.serializer = serializer
+        self.schema_type = schema_type
+        self.serializer_type = serializer_type
 
     async def serialize(self, message: T) -> bytes:
-        return await self.serializer.serialize(message.dict(exclude_hidden=False))
+        return await self.serializer_type.serialize(message.dict())
 
     async def deserialize(self, serialized: bytes) -> T:
-        data = await self.serializer.deserialize(serialized)
-        return self.schema(**data)
+        data = await self.serializer_type.deserialize(serialized)
+        return self.schema_type(**data)

@@ -2,29 +2,33 @@ import abc
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-from pydantic import Field
-from typing import AsyncIterator, Generic, List, Optional, TypeVar
+from pydantic import BaseModel
+from typing import AsyncIterator, List, Optional, Tuple, Type, TypeVar
 from uuid import UUID
 
 from fastmicro.env import (
     BATCH_SIZE,
     MESSAGING_TIMEOUT,
 )
-from fastmicro.schema import CustomBaseModel
-from fastmicro.topic import Topic
+from fastmicro.topic import T, Topic
 
 logger = logging.getLogger(__name__)
 
 
-class MessageABC(abc.ABC, CustomBaseModel):
-    correlation_id: Optional[UUID] = Field(None, hidden=True)
-    resends: Optional[int] = Field(0, hidden=True)
+class HeaderABC(abc.ABC, BaseModel):
+    correlation_id: Optional[UUID] = None
+    resends: int = 0
+    data: Optional[bytes] = None
 
 
-T = TypeVar("T", bound=MessageABC)
+HT = TypeVar("HT", bound=HeaderABC)
 
 
-class MessagingABC(Generic[T], abc.ABC):
+class MessagingABC(abc.ABC):
+    @property
+    def header_type(self) -> Type[HT]:
+        raise NotImplementedError
+
     def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
         pass
 
@@ -38,7 +42,9 @@ class MessagingABC(Generic[T], abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
+    async def _receive(
+        self, topic: Topic[T], group_name: str, consumer_name: str
+    ) -> Tuple[HT, T]:
         raise NotImplementedError
 
     async def _receive_batch(
@@ -47,65 +53,64 @@ class MessagingABC(Generic[T], abc.ABC):
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
-        timeout: float = MESSAGING_TIMEOUT,
-    ) -> List[T]:
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
+    ) -> Tuple[List[HT], List[T]]:
         tasks = [
             self._receive(topic, group_name, consumer_name) for i in range(batch_size)
         ]
-        done, pending = await asyncio.wait(tasks, timeout=timeout)
-        assert not pending
-        return [await task for task in done]
+        temp = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+        headers, messages = zip(*temp)
+        return headers, messages
 
     @abc.abstractmethod
-    async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
+    async def _ack(self, topic_name: str, group_name: str, header: HT) -> None:
         raise NotImplementedError
 
     async def _ack_batch(
-        self, topic_name: str, group_name: str, messages: List[T]
+        self, topic_name: str, group_name: str, headers: List[HT]
     ) -> None:
-        tasks = [self._ack(topic_name, group_name, message) for message in messages]
+        tasks = [self._ack(topic_name, group_name, header) for header in headers]
         await asyncio.gather(*tasks)
 
     @abc.abstractmethod
-    async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
+    async def _nack(self, topic_name: str, group_name: str, header: HT) -> None:
         raise NotImplementedError
 
     async def _nack_batch(
-        self, topic_name: str, group_name: str, messages: List[T]
+        self, topic_name: str, group_name: str, headers: List[HT]
     ) -> None:
-        tasks = [self._nack(topic_name, group_name, message) for message in messages]
+        tasks = [self._nack(topic_name, group_name, header) for header in headers]
         await asyncio.gather(*tasks)
 
     @abc.abstractmethod
-    async def _send(self, topic: Topic[T], message: T) -> None:
+    async def _send(self, topic: Topic[T], header: HT, message: T) -> None:
         raise NotImplementedError
 
-    async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
-        tasks = [self._send(topic, message) for message in messages]
+    async def _send_batch(
+        self, topic: Topic[T], headers: List[HT], messages: List[T]
+    ) -> None:
+        tasks = [
+            self._send(topic, header, message)
+            for header, message in zip(headers, messages)
+        ]
         await asyncio.gather(*tasks)
-
-    @asynccontextmanager
-    async def transaction(self, topic_name: str) -> AsyncIterator[None]:
-        yield
 
     @asynccontextmanager
     async def receive(
         self, topic: Topic[T], group_name: str, consumer_name: str
-    ) -> AsyncIterator[T]:
-        message = None
+    ) -> AsyncIterator[Tuple[HT, T]]:
         try:
             await self.subscribe(topic.name, group_name)
-            message = await self._receive(topic, group_name, consumer_name)
-            logger.debug(f"Received {message}")
+            header, message = await self._receive(topic, group_name, consumer_name)
+            logger.debug(f"Received {header}: {message}")
 
-            yield message
+            yield header, message
 
-            logger.debug(f"Acking {message}")
-            await self._ack(topic.name, group_name, message)
+            logger.debug(f"Acking {header}")
+            await self._ack(topic.name, group_name, header)
         except Exception as e:
-            if message:
-                logger.debug(f"Nacking {message}")
-                await self._nack(topic.name, group_name, message)
+            logger.debug(f"Nacking {header}")
+            await self._nack(topic.name, group_name, header)
             raise e
 
     @asynccontextmanager
@@ -115,41 +120,43 @@ class MessagingABC(Generic[T], abc.ABC):
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
-        timeout: float = MESSAGING_TIMEOUT,
-    ) -> AsyncIterator[List[T]]:
-        messages = list()
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
+    ) -> AsyncIterator[Tuple[List[HT], List[T]]]:
+        headers = list()
         try:
             await self.subscribe(topic.name, group_name)
-            messages = await self._receive_batch(
+            headers, messages = await self._receive_batch(
                 topic, group_name, consumer_name, batch_size, timeout
             )
-            if messages:
-                if logger.level >= logging.DEBUG:
-                    for message in messages:
-                        logger.debug(f"Received {message}")
+            if headers:
+                if logger.isEnabledFor(logging.DEBUG):
+                    for header, message in zip(headers, messages):
+                        logger.debug(f"Received {header}: {message}")
 
-                yield messages
+                yield headers, messages
 
-                if logger.level >= logging.DEBUG:
-                    for message in messages:
-                        logger.debug(f"Acking {message}")
-                await self._ack_batch(topic.name, group_name, messages)
+                if logger.isEnabledFor(logging.DEBUG):
+                    for header in headers:
+                        logger.debug(f"Acking {header}")
+                await self._ack_batch(topic.name, group_name, headers)
             else:
-                yield messages
+                yield headers, messages
         except Exception as e:
-            if messages:
-                if logger.level >= logging.DEBUG:
-                    for message in messages:
-                        logger.debug(f"Nacking {message}")
-                await self._nack_batch(topic.name, group_name, messages)
+            if headers:
+                if logger.isEnabledFor(logging.DEBUG):
+                    for header in headers:
+                        logger.debug(f"Nacking {header}")
+                await self._nack_batch(topic.name, group_name, headers)
             raise e
 
-    async def send(self, topic: Topic[T], message: T) -> None:
-        logger.debug(f"Sending {message}")
-        await self._send(topic, message)
+    async def send(self, topic: Topic[T], header: HT, message: T) -> None:
+        logger.debug(f"Sending {header}: {message}")
+        await self._send(topic, header, message)
 
-    async def send_batch(self, topic: Topic[T], messages: List[T]) -> None:
-        if logger.level >= logging.DEBUG:
-            for message in messages:
-                logger.debug(f"Sending {message}")
-        await self._send_batch(topic, messages)
+    async def send_batch(
+        self, topic: Topic[T], headers: List[HT], messages: List[T]
+    ) -> None:
+        if logger.isEnabledFor(logging.DEBUG):
+            for header, message in zip(headers, messages):
+                logger.debug(f"Sending {header}: {message}")
+        await self._send_batch(topic, headers, messages)

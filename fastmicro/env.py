@@ -1,7 +1,11 @@
 import os
 
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "0"))
-MESSAGING_TIMEOUT = float(os.getenv("MESSAGING_TIMEOUT", "0"))
+MESSAGING_TIMEOUT = (
+    float(os.environ["MESSAGING_TIMEOUT"])
+    if "MESSAGING_TIMEOUT" in os.environ
+    else None
+)
 PROCESSING_TIMEOUT = (
     float(os.environ["PROCESSING_TIMEOUT"])
     if "PROCESSING_TIMEOUT" in os.environ

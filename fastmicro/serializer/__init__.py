@@ -13,21 +13,22 @@ class SerializerABC(abc.ABC):
             elif obj["__type__"] == "datetime.datetime":
                 obj = datetime.fromisoformat(obj["__value__"])
             elif obj["__type__"] == "bytes":
-                obj = obj["__value__"].encode()
+                obj = bytes.fromhex(obj["__value__"])
+            else:
+                raise ValueError(f'Unknown type: {obj["__type__"]}')
         return obj
 
     @staticmethod
     def encode(obj: Any) -> Any:
         if isinstance(obj, UUID):
             obj = {"__type__": "uuid.UUID", "__value__": str(obj)}
-            return obj
         elif isinstance(obj, datetime):
             obj = {"__type__": "datetime.datetime", "__value__": obj.isoformat()}
-            return obj
         elif isinstance(obj, bytes):
-            obj = {"__type__": "bytes", "__value__": obj.decode()}
-            return obj
-        raise ValueError(f"Unknown type: {type(obj)}")
+            obj = {"__type__": "bytes", "__value__": obj.hex()}
+        else:
+            raise ValueError(f"Unknown type: {type(obj)}")
+        return obj
 
     @classmethod
     @abc.abstractmethod

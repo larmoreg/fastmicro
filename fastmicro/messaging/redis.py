@@ -1,15 +1,14 @@
 import aioredis
 import asyncio
-from contextlib import asynccontextmanager
 import logging
-from pydantic import Field
+import sys
 from typing import (
     Any,
-    AsyncIterator,
     Dict,
     List,
     Optional,
-    TypeVar,
+    Tuple,
+    Type,
 )
 
 from fastmicro.env import (
@@ -17,20 +16,22 @@ from fastmicro.env import (
     MESSAGING_TIMEOUT,
     REDIS_ADDRESS,
 )
-from fastmicro.messaging import MessageABC, MessagingABC
-from fastmicro.topic import Topic
+from fastmicro.messaging import HeaderABC, HT, MessagingABC
+from fastmicro.topic import T, Topic
 
 logger = logging.getLogger(__name__)
 
 
-class Message(MessageABC):
-    message_id: Optional[bytes] = Field(None, hidden=True)
+class Header(HeaderABC):
+    message_id: Optional[bytes] = None
 
 
-T = TypeVar("T", bound=Message)
+header_topic = Topic("", Header)
 
 
 class Messaging(MessagingABC):
+    header_type: Type[HT] = Header
+
     def __init__(
         self,
         address: str = REDIS_ADDRESS,
@@ -44,10 +45,11 @@ class Messaging(MessagingABC):
 
         self.address = address
         self.redis: Optional[Any] = None
-        self.transactions: Dict[str, Optional[Any]] = dict()
 
     async def connect(self) -> None:
-        self.redis = await aioredis.create_redis_pool(self.address, loop=self.loop)
+        self.redis = await aioredis.create_redis_pool(
+            self.address, loop=self.loop, minsize=3
+        )
 
     async def cleanup(self) -> None:
         assert self.redis
@@ -86,16 +88,21 @@ class Messaging(MessagingABC):
     @staticmethod
     async def _raw_receive(
         topic: Topic[T], temp_message: Dict[bytes, bytes], message_id: bytes
-    ) -> T:
-        message = await topic.deserialize(temp_message[b"data"])
-        message.message_id = message_id
-        return message
+    ) -> Tuple[Header, T]:
+        header = await header_topic.deserialize(temp_message[b"data"])
+        header.message_id = message_id
 
-    async def _receive(self, topic: Topic[T], group_name: str, consumer_name: str) -> T:
-        messages = await self._receive_batch(
+        assert header.data
+        message = await topic.deserialize(header.data)
+        return header, message
+
+    async def _receive(
+        self, topic: Topic[T], group_name: str, consumer_name: str
+    ) -> Tuple[Header, T]:
+        headers, messages = await self._receive_batch(
             topic, group_name, consumer_name, batch_size=1, timeout=0
         )
-        return messages[0]
+        return headers[0], messages[0]
 
     async def _receive_batch(
         self,
@@ -103,14 +110,14 @@ class Messaging(MessagingABC):
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
-        timeout: float = MESSAGING_TIMEOUT,
-    ) -> List[T]:
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
+    ) -> Tuple[List[Header], List[T]]:
         assert self.redis
         temp = await self.redis.xread_group(
             group_name,
             consumer_name,
             [topic.name],
-            timeout=int(timeout * 1000),
+            timeout=int(timeout * 1000) if timeout else sys.maxsize,
             count=batch_size,
             latest_ids=[">"],
         )
@@ -119,54 +126,43 @@ class Messaging(MessagingABC):
             self._raw_receive(topic, message, message_id)
             for stream, message_id, message in temp
         ]
-        messages = await asyncio.gather(*tasks)
-        return messages
+        temp = await asyncio.gather(*tasks)
+        headers, messages = zip(*temp)
+        return headers, messages
 
-    async def _ack(self, topic_name: str, group_name: str, message: T) -> None:
-        await self._ack_batch(topic_name, group_name, [message])
+    async def _ack(self, topic_name: str, group_name: str, header: Header) -> None:
+        await self._ack_batch(topic_name, group_name, [header])
 
     async def _ack_batch(
-        self, topic_name: str, group_name: str, messages: List[T]
+        self, topic_name: str, group_name: str, headers: List[Header]
     ) -> None:
         assert self.redis
-        message_ids = [message.message_id for message in messages]
+        message_ids = [header.message_id for header in headers]
         await self.redis.xack(topic_name, group_name, *message_ids)
 
-    async def _nack(self, topic_name: str, group_name: str, message: T) -> None:
+    async def _nack(self, topic_name: str, group_name: str, header: Header) -> None:
         pass
 
     async def _nack_batch(
-        self, topic_name: str, group_name: str, messages: List[T]
+        self, topic_name: str, group_name: str, headers: List[Header]
     ) -> None:
         pass
 
-    @staticmethod
-    async def _raw_send(
-        transaction: Optional[Any], topic: Topic[T], message: T
-    ) -> None:
-        assert transaction
+    async def _raw_send(self, topic: Topic[T], header: Header, message: T) -> None:
         serialized = await topic.serialize(message)
-        transaction.xadd(topic.name, {"data": serialized})
+        header.data = serialized
 
-    async def _send(self, topic: Topic[T], message: T) -> None:
-        async with self.transaction(topic.name) as transaction:
-            await self._raw_send(transaction, topic, message)
+        serialized = await header_topic.serialize(header)
+        await self.redis.xadd(topic.name, {"data": serialized})
 
-    async def _send_batch(self, topic: Topic[T], messages: List[T]) -> None:
-        async with self.transaction(topic.name) as transaction:
-            tasks = [
-                self._raw_send(transaction, topic, message) for message in messages
-            ]
-            await asyncio.gather(*tasks)
+    async def _send(self, topic: Topic[T], header: Header, message: T) -> None:
+        await self._raw_send(topic, header, message)
 
-    @asynccontextmanager
-    async def transaction(self, topic_name: str) -> AsyncIterator[Optional[Any]]:
-        if topic_name not in self.transactions:
-            assert self.redis
-            transaction = self.redis.multi_exec()
-            self.transactions[topic_name] = transaction
-            yield transaction
-            await transaction.execute()
-            del self.transactions[topic_name]
-        else:
-            yield self.transactions[topic_name]
+    async def _send_batch(
+        self, topic: Topic[T], headers: List[Header], messages: List[T]
+    ) -> None:
+        tasks = [
+            self._raw_send(topic, header, message)
+            for header, message in zip(headers, messages)
+        ]
+        await asyncio.gather(*tasks)

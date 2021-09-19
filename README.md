@@ -47,22 +47,24 @@ The in-memory backend cannot be used for inter-process communication.
 #!/usr/bin/env python3
 
 import asyncio
-from fastmicro.messaging.memory import Message, Messaging
+from pydantic import BaseModel
+
+from fastmicro.messaging.memory import Messaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
-messaging: Messaging = Messaging()
-service = Service("test", messaging)
 
-
-class User(Message):
+class User(BaseModel):
     name: str
 
 
-class Greeting(Message):
+class Greeting(BaseModel):
     name: str
     greeting: str
 
+
+messaging: Messaging = Messaging()
+service = Service("test", messaging)
 
 greet_user_topic = Topic("greet_user", User)
 greeting_topic = Topic("greeting", Greeting)
@@ -104,8 +106,6 @@ FastMicro supports the following backends:
 
 * <a href="https://pypi.org/project/aiokafka/" class="external-link" target="_blank">Kafka</a>
 * <a href="https://pypi.org/project/aioredis/" class="external-link" target="_blank">Redis</a>
-* <a href="https://pypi.org/project/asyncio-nats-streaming/" class="external-link" target="_blank">NATS Streaming</a> (experimental)
-* <a href="https://pypi.org/project/pulsar-client/" class="external-link" target="_blank">Apache Pulsar</a> (experimental)
 
 To install FastMicro with one of these backends run one of the following:
 
@@ -114,8 +114,6 @@ To install FastMicro with one of these backends run one of the following:
 ```console
 $ pip install fastmicro[kafka]
 $ pip install fastmicro[redis]
-$ pip install fastmicro[nats]
-$ pip install fastmicro[pulsar]
 ```
 
 ## Another Example
@@ -129,22 +127,24 @@ This example shows how to use the Redis backend for inter-process communication.
 ```Python
 #!/usr/bin/env python3
 
-from fastmicro.messaging.redis import Message, Messaging
+from pydantic import BaseModel
+
+from fastmicro.messaging.redis import Messaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
-messaging: Messaging = Messaging()
-service = Service("test", messaging)
 
-
-class User(Message):
+class User(BaseModel):
     name: str
 
 
-class Greeting(Message):
+class Greeting(BaseModel):
     name: str
     greeting: str
 
+
+messaging: Messaging = Messaging()
+service = Service("test", messaging)
 
 greet_user_topic = Topic("greet_user", User)
 greeting_topic = Topic("greeting", Greeting)
@@ -168,22 +168,24 @@ if __name__ == "__main__":
 #!/usr/bin/env python3
 
 import asyncio
-from fastmicro.messaging.redis import Message, Messaging
+from pydantic import BaseModel
+
+from fastmicro.messaging.redis import Messaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
-messaging: Messaging = Messaging()
-service = Service("test", messaging)
 
-
-class User(Message):
+class User(BaseModel):
     name: str
 
 
-class Greeting(Message):
+class Greeting(BaseModel):
     name: str
     greeting: str
 
+
+messaging: Messaging = Messaging()
+service = Service("test", messaging)
 
 greet_user_topic = Topic("greet_user", User)
 greeting_topic = Topic("greeting", Greeting)

@@ -1,22 +1,24 @@
 #!/usr/bin/env python3
 
 import asyncio
-from fastmicro.messaging.memory import Message, Messaging
+from pydantic import BaseModel
+
+from fastmicro.messaging.memory import Messaging
 from fastmicro.service import Service
 from fastmicro.topic import Topic
 
-messaging: Messaging = Messaging()
-service = Service("test", messaging)
 
-
-class User(Message):
+class User(BaseModel):
     name: str
 
 
-class Greeting(Message):
+class Greeting(BaseModel):
     name: str
     greeting: str
 
+
+messaging: Messaging = Messaging()
+service = Service("test", messaging)
 
 greet_user_topic = Topic("greet_user", User)
 greeting_topic = Topic("greeting", Greeting)

@@ -19,6 +19,7 @@ class HeaderABC(abc.ABC, BaseModel):
     correlation_id: Optional[UUID] = None
     resends: int = 0
     data: Optional[bytes] = None
+    error: Optional[str] = None
 
 
 HT = TypeVar("HT", bound=HeaderABC)
@@ -88,16 +89,21 @@ class MessagingABC(abc.ABC):
         await asyncio.gather(*tasks)
 
     @abc.abstractmethod
-    async def _send(self, topic: Topic[T], header: HT, message: T) -> None:
+    async def _send(
+        self, topic: Topic[T], header: HT, message: Optional[T] = None
+    ) -> None:
         raise NotImplementedError
 
     async def _send_batch(
-        self, topic: Topic[T], headers: List[HT], messages: List[T]
+        self, topic: Topic[T], headers: List[HT], messages: Optional[List[T]] = None
     ) -> None:
-        tasks = [
-            self._send(topic, header, message)
-            for header, message in zip(headers, messages)
-        ]
+        if messages:
+            tasks = [
+                self._send(topic, header, message)
+                for header, message in zip(headers, messages)
+            ]
+        else:
+            tasks = [self._send(topic, header) for header in headers]
         await asyncio.gather(*tasks)
 
     @asynccontextmanager
@@ -108,6 +114,7 @@ class MessagingABC(abc.ABC):
         consumer_name: str,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[Tuple[HT, T]]:
+        header = None
         try:
             await self.subscribe(topic.name, group_name)
             header, message = await self._receive(
@@ -120,8 +127,9 @@ class MessagingABC(abc.ABC):
             logger.debug(f"Acking {header}")
             await self._ack(topic.name, group_name, header)
         except Exception as e:
-            logger.debug(f"Nacking {header}")
-            await self._nack(topic.name, group_name, header)
+            if header:
+                logger.debug(f"Nacking {header}")
+                await self._nack(topic.name, group_name, header)
             raise e
 
     @asynccontextmanager
@@ -160,14 +168,23 @@ class MessagingABC(abc.ABC):
                 await self._nack_batch(topic.name, group_name, headers)
             raise e
 
-    async def send(self, topic: Topic[T], header: HT, message: T) -> None:
-        logger.debug(f"Sending {header}: {message}")
+    async def send(
+        self, topic: Topic[T], header: HT, message: Optional[T] = None
+    ) -> None:
+        if message:
+            logger.debug(f"Sending {header}: {message}")
+        else:
+            logger.debug(f"Sending {header}")
         await self._send(topic, header, message)
 
     async def send_batch(
-        self, topic: Topic[T], headers: List[HT], messages: List[T]
+        self, topic: Topic[T], headers: List[HT], messages: Optional[List[T]] = None
     ) -> None:
         if logger.isEnabledFor(logging.DEBUG):
-            for header, message in zip(headers, messages):
-                logger.debug(f"Sending {header}: {message}")
+            if messages:
+                for header, message in zip(headers, messages):
+                    logger.debug(f"Sending {header}: {message}")
+            else:
+                for header in headers:
+                    logger.debug(f"Sending {header}")
         await self._send_batch(topic, headers, messages)

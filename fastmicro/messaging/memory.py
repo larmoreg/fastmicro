@@ -88,14 +88,15 @@ class Messaging(MessagingABC):
         group_name: str,
         consumer_name: str,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Tuple[Header, T]:
+    ) -> Tuple[Header, Optional[T]]:
         queue = await self._get_queue(topic.name)
         message_id, serialized = await asyncio.wait_for(queue.get(), timeout=timeout)
         header = await header_topic.deserialize(serialized)
         header.message_id = message_id
 
-        assert header.data
-        message = await topic.deserialize(header.data)
+        message = None
+        if header.data:
+            message = await topic.deserialize(header.data)
         return header, message
 
     async def _ack(self, topic_name: str, group_name: str, header: Header) -> None:
@@ -108,10 +109,14 @@ class Messaging(MessagingABC):
         assert header.message_id
         await queue.nack(header.message_id)
 
-    async def _send(self, topic: Topic[T], header: Header, message: T) -> None:
+    async def _send(
+        self, topic: Topic[T], header: Header, message: Optional[T] = None
+    ) -> None:
         queue = await self._get_queue(topic.name)
-        serialized = await topic.serialize(message)
-        header.data = serialized
+
+        if message:
+            serialized = await topic.serialize(message)
+            header.data = serialized
 
         serialized = await header_topic.serialize(header)
         await queue.put(serialized)

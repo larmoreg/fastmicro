@@ -92,8 +92,9 @@ class Messaging(MessagingABC):
         header = await header_topic.deserialize(temp_message[b"data"])
         header.message_id = message_id
 
-        assert header.data
-        message = await topic.deserialize(header.data)
+        message = None
+        if header.data:
+            message = await topic.deserialize(header.data)
         return header, message
 
     async def _receive(
@@ -121,7 +122,11 @@ class Messaging(MessagingABC):
             group_name,
             consumer_name,
             [topic.name],
-            timeout=int(timeout * 1000) if timeout else sys.maxsize,
+            timeout=sys.maxsize
+            if timeout is None
+            else int(timeout * 1000)
+            if timeout > 0
+            else None,
             count=batch_size,
             latest_ids=[">"],
         )
@@ -130,6 +135,9 @@ class Messaging(MessagingABC):
             self._raw_receive(topic, message, message_id)
             for stream, message_id, message in temp
         ]
+        if not tasks:
+            raise asyncio.TimeoutError
+
         temp = await asyncio.gather(*tasks)
         headers, messages = zip(*temp)
         return headers, messages
@@ -152,21 +160,29 @@ class Messaging(MessagingABC):
     ) -> None:
         pass
 
-    async def _raw_send(self, topic: Topic[T], header: Header, message: T) -> None:
-        serialized = await topic.serialize(message)
-        header.data = serialized
+    async def _raw_send(
+        self, topic: Topic[T], header: Header, message: Optional[T] = None
+    ) -> None:
+        if message:
+            serialized = await topic.serialize(message)
+            header.data = serialized
 
         serialized = await header_topic.serialize(header)
         await self.redis.xadd(topic.name, {"data": serialized})
 
-    async def _send(self, topic: Topic[T], header: Header, message: T) -> None:
+    async def _send(
+        self, topic: Topic[T], header: Header, message: Optional[T] = None
+    ) -> None:
         await self._raw_send(topic, header, message)
 
     async def _send_batch(
-        self, topic: Topic[T], headers: List[Header], messages: List[T]
+        self, topic: Topic[T], headers: List[Header], messages: Optional[List[T]] = None
     ) -> None:
-        tasks = [
-            self._raw_send(topic, header, message)
-            for header, message in zip(headers, messages)
-        ]
+        if messages:
+            tasks = [
+                self._raw_send(topic, header, message)
+                for header, message in zip(headers, messages)
+            ]
+        else:
+            tasks = [self._raw_send(topic, header) for header in headers]
         await asyncio.gather(*tasks)

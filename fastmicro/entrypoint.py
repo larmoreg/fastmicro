@@ -1,18 +1,19 @@
 import asyncio
 import logging
 from pydantic import BaseModel
-from typing import Any, Awaitable, Callable, cast, Generic, List, Optional, TypeVar
+from typing import Awaitable, Callable, cast, Generic, List, Optional, TypeVar
 from uuid import uuid4
 
 from fastmicro.env import (
     BATCH_SIZE,
+    CALL_TIMEOUT,
     MESSAGING_TIMEOUT,
     PROCESSING_TIMEOUT,
     RESENDS,
     RETRIES,
     SLEEP_TIME,
 )
-from fastmicro.messaging import MessagingABC
+from fastmicro.messaging import HT, MessagingABC
 from fastmicro.topic import Topic
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,13 @@ class Entrypoint(Generic[AT, BT]):
                     attempt = 0
                     while True:
                         try:
+                            output_headers = [
+                                self.messaging.header_type(
+                                    correlation_id=input_header.correlation_id
+                                )
+                                for input_header in input_headers
+                            ]
+
                             tasks = [
                                 self.callback(input_message)
                                 for input_message in input_messages
@@ -95,7 +103,7 @@ class Entrypoint(Generic[AT, BT]):
                             )
                         except asyncio.CancelledError as e:
                             raise e
-                        except Exception:
+                        except Exception as e:
                             if retries < 0 or attempt < retries:
                                 attempt += 1
                                 temp = f"{attempt}"
@@ -122,15 +130,14 @@ class Entrypoint(Generic[AT, BT]):
                                     return False
                                 else:
                                     logger.exception("Processing failed; skipping")
+                                    for output_header in output_headers:
+                                        output_header.error = str(e)
+                                    await self.messaging.send_batch(
+                                        self.reply_topic,
+                                        output_headers,
+                                    )
                                     return False
                         break
-
-                    output_headers = [
-                        self.messaging.header_type(
-                            correlation_id=input_header.correlation_id
-                        )
-                        for input_header in input_headers
-                    ]
 
                     if logger.isEnabledFor(logging.DEBUG):
                         for output_message in output_messages:
@@ -150,13 +157,18 @@ class Entrypoint(Generic[AT, BT]):
                 attempt = 0
                 while True:
                     try:
+                        if input_header.correlation_id:
+                            output_header = self.messaging.header_type(
+                                correlation_id=input_header.correlation_id
+                            )
+
                         output_message = await asyncio.wait_for(
                             self.callback(input_message), timeout=processing_timeout
                         )
                         break
                     except asyncio.CancelledError as e:
                         raise e
-                    except Exception:
+                    except Exception as e:
                         if retries < 0 or attempt < retries:
                             attempt += 1
                             temp = f"{attempt}"
@@ -180,12 +192,11 @@ class Entrypoint(Generic[AT, BT]):
                                 return False
                             else:
                                 logger.exception("Processing failed; skipping")
+                                output_header.error = str(e)
+                                await self.messaging.send(
+                                    self.reply_topic, output_header
+                                )
                                 return False
-
-                if input_header.correlation_id:
-                    output_header = self.messaging.header_type(
-                        correlation_id=input_header.correlation_id
-                    )
 
                 logger.debug(f"Result: {output_message}")
                 await self.messaging.send(
@@ -201,9 +212,7 @@ class Entrypoint(Generic[AT, BT]):
     async def call(
         self,
         input_message: AT,
-        *args: Any,
-        messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
-        **kwargs: Any,
+        timeout: Optional[float] = CALL_TIMEOUT,
     ) -> BT:
         input_header = self.messaging.header_type(correlation_id=uuid4())
 
@@ -217,10 +226,13 @@ class Entrypoint(Generic[AT, BT]):
                 self.reply_topic,
                 self.broadcast_name,
                 self.consumer_name,
-                timeout=messaging_timeout,
+                timeout=timeout,
             ) as (output_header, output_message):
                 if output_header.correlation_id == input_header.correlation_id:
                     break
+
+        if output_header.error:
+            raise RuntimeError(output_header.error)
 
         logger.debug(f"Result: {output_message}")
         return cast(BT, output_message)
@@ -228,18 +240,17 @@ class Entrypoint(Generic[AT, BT]):
     async def call_batch(
         self,
         input_messages: List[AT],
-        *args: Any,
         batch_size: int = BATCH_SIZE,
-        messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
-        **kwargs: Any,
+        timeout: Optional[float] = CALL_TIMEOUT,
     ) -> List[BT]:
         input_headers = [
             self.messaging.header_type(correlation_id=uuid4())
-            for i in range(len(input_messages))
+            for input_message in input_messages
         ]
 
         await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)
 
+        output_headers: List[HT] = list()
         output_messages: List[BT] = list()
         for i in range(0, len(input_messages), batch_size):
             j = i + batch_size
@@ -262,18 +273,19 @@ class Entrypoint(Generic[AT, BT]):
                     self.broadcast_name,
                     self.consumer_name,
                     batch_size=batch_size,
-                    timeout=messaging_timeout,
+                    timeout=timeout,
                 ) as (temp_output_headers, temp_output_messages):
-                    temp = [
-                        (output_header.correlation_id, output_message)
-                        for output_header, output_message in zip(
-                            temp_output_headers, temp_output_messages
-                        )
-                        if output_header.correlation_id in correlation_ids
-                    ]
-                    temp_ids, temp_messages = zip(*temp)
-                    correlation_ids -= set(temp_ids)
-                    output_messages.extend(temp_messages)
+                    for output_header, output_message in zip(
+                        temp_output_headers, temp_output_messages
+                    ):
+                        if output_header.correlation_id in correlation_ids:
+                            correlation_ids.remove(output_header.correlation_id)
+                            output_headers.append(output_header)
+                            output_messages.append(output_message)
+
+        for output_header in output_headers:
+            if output_header.error:
+                raise RuntimeError(output_header.error)
 
         if logger.isEnabledFor(logging.DEBUG):
             for output_message in output_messages:

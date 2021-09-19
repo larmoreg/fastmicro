@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import pytest
 
 from fastmicro.entrypoint import Entrypoint
@@ -45,7 +44,6 @@ async def test_entrypoint_call_batch(
         assert output_message.greeting == f"Hello, {input_message.name}!"
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_entrypoint_exception(
     invalid: Entrypoint[User, Greeting],
@@ -58,113 +56,13 @@ async def test_entrypoint_exception(
     assert str(excinfo.value) == "Test"
 
 
-@pytest.mark.skip
-@pytest.mark.asyncio
-async def test_entrypoint_timeout(
-    entrypoint: Entrypoint[User, Greeting],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    input_message = User(name="Greg")
-
-    with pytest.raises(asyncio.TimeoutError):
-        with caplog.at_level(logging.ERROR, logger="fastmicro.entrypoint"):
-            await entrypoint.call(input_message, processing_timeout=1)
-
-    assert len(caplog.records) == 1
-    assert caplog.records[0].message == "Processing failed; skipping"
-
-
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_entrypoint_exception_batch(
     invalid: Entrypoint[User, Greeting],
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
     input_messages = [User(name="Cara"), User(name="Greg")]
 
     with pytest.raises(RuntimeError) as excinfo:
-        with caplog.at_level(logging.ERROR, logger="fastmicro.entrypoint"):
-            await invalid.call_batch(input_messages, batch_size=2)
+        await invalid.call_batch(input_messages, batch_size=2)
 
     assert str(excinfo.value) == "Test"
-
-    assert len(caplog.records) == 1
-    assert caplog.records[0].message == "Processing failed; skipping"
-
-
-@pytest.mark.skip
-@pytest.mark.asyncio
-async def test_entrypoint_retry(
-    invalid: Entrypoint[User, Greeting],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    input_message = User(name="Greg")
-
-    with pytest.raises(RuntimeError) as excinfo:
-        with caplog.at_level(logging.ERROR, logger="fastmicro.entrypoint"):
-            await invalid.call(input_message, retries=1, sleep_time=1)
-
-    assert str(excinfo.value) == "Test"
-
-    assert len(caplog.records) == 2
-    assert caplog.records[0].message == "Processing failed; retry 1 / 1"
-    assert caplog.records[1].message == "Processing failed; skipping"
-
-
-@pytest.mark.skip
-@pytest.mark.asyncio
-async def test_entrypoint_retry_batch(
-    invalid: Entrypoint[User, Greeting],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    input_messages = [User(name="Cara"), User(name="Greg")]
-
-    with pytest.raises(RuntimeError) as excinfo:
-        with caplog.at_level(logging.ERROR, logger="fastmicro.entrypoint"):
-            await invalid.call_batch(
-                input_messages, batch_size=2, retries=1, sleep_time=1
-            )
-
-    assert str(excinfo.value) == "Test"
-
-    assert len(caplog.records) == 2
-    assert caplog.records[0].message == "Processing failed; retry 1 / 1"
-    assert caplog.records[1].message == "Processing failed; skipping"
-
-
-@pytest.mark.skip
-@pytest.mark.asyncio
-async def test_entrypoint_resend(
-    invalid: Entrypoint[User, Greeting],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    input_message = User(name="Greg")
-
-    with pytest.raises(RuntimeError) as excinfo:
-        with caplog.at_level(logging.ERROR, logger="fastmicro.entrypoint"):
-            await invalid.call(input_message, resends=1)
-
-    assert str(excinfo.value) == "Test"
-
-    assert len(caplog.records) == 2
-    assert caplog.records[0].message == "Processing failed; resend 1 / 1"
-    assert caplog.records[1].message == "Processing failed; skipping"
-
-
-@pytest.mark.skip
-@pytest.mark.asyncio
-async def test_entrypoint_resend_batch(
-    invalid: Entrypoint[User, Greeting],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    input_messages = [User(name="Cara"), User(name="Greg")]
-
-    with pytest.raises(RuntimeError) as excinfo:
-        with caplog.at_level(logging.ERROR, logger="fastmicro.entrypoint"):
-            await invalid.call_batch(input_messages, batch_size=2, resends=1)
-
-    assert str(excinfo.value) == "Test"
-
-    assert len(caplog.records) == 2
-    assert caplog.records[0].message == "Processing failed; resend 1 / 1"
-    assert caplog.records[1].message == "Processing failed; skipping"

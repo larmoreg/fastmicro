@@ -88,13 +88,14 @@ class Messaging(MessagingABC):
     @staticmethod
     async def _raw_receive(
         topic: Topic[T], temp_message: aiokafka.structs.ConsumerRecord
-    ) -> Tuple[Header, T]:
+    ) -> Tuple[Header, Optional[T]]:
         header = await header_topic.deserialize(temp_message.value)
         header.partition = temp_message.partition
         header.offset = temp_message.offset
 
-        assert header.data
-        message = await topic.deserialize(header.data)
+        message = None
+        if header.data:
+            message = await topic.deserialize(header.data)
         return header, message
 
     async def _receive(
@@ -118,7 +119,7 @@ class Messaging(MessagingABC):
     ) -> Tuple[List[Header], List[T]]:
         consumer = await self._get_consumer(topic.name, group_name)
         temp = await consumer.getmany(
-            timeout_ms=int(timeout * 1000) if timeout else sys.maxsize,
+            timeout_ms=int(timeout * 1000) if timeout is not None else sys.maxsize,
             max_records=batch_size,
         )
 
@@ -127,6 +128,9 @@ class Messaging(MessagingABC):
             for _, messages in temp.items()
             for message in messages
         ]
+        if not tasks:
+            raise asyncio.TimeoutError
+
         results = await asyncio.gather(*tasks)
         output_headers, output_messages = zip(*results)
         return output_headers, output_messages
@@ -166,24 +170,33 @@ class Messaging(MessagingABC):
 
     @staticmethod
     async def _raw_send(
-        producer: aiokafka.AIOKafkaProducer, topic: Topic[T], header: Header, message: T
+        producer: aiokafka.AIOKafkaProducer,
+        topic: Topic[T],
+        header: Header,
+        message: Optional[T] = None,
     ) -> None:
-        serialized = await topic.serialize(message)
-        header.data = serialized
+        if message:
+            serialized = await topic.serialize(message)
+            header.data = serialized
 
         serialized = await header_topic.serialize(header)
         await producer.send_and_wait(topic.name, serialized)
 
-    async def _send(self, topic: Topic[T], header: Header, message: T) -> None:
+    async def _send(
+        self, topic: Topic[T], header: Header, message: Optional[T] = None
+    ) -> None:
         producer = await self._get_producer(topic.name)
         await self._raw_send(producer, topic, header, message)
 
     async def _send_batch(
-        self, topic: Topic[T], headers: List[Header], messages: List[T]
+        self, topic: Topic[T], headers: List[Header], messages: Optional[List[T]] = None
     ) -> None:
         producer = await self._get_producer(topic.name)
-        tasks = [
-            self._raw_send(producer, topic, header, message)
-            for header, message in zip(headers, messages)
-        ]
+        if messages:
+            tasks = [
+                self._raw_send(producer, topic, header, message)
+                for header, message in zip(headers, messages)
+            ]
+        else:
+            tasks = [self._raw_send(producer, topic, header) for header in headers]
         await asyncio.gather(*tasks)

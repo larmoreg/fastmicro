@@ -5,7 +5,7 @@ import logging
 import logging.config
 from pydantic import BaseModel
 import pytest
-from typing import AsyncGenerator, cast, Type
+from typing import AsyncGenerator, cast, Optional, Type
 
 from fastmicro.entrypoint import Entrypoint
 from fastmicro.messaging import MessagingABC
@@ -59,6 +59,7 @@ def service(messaging: MessagingABC, event_loop: asyncio.AbstractEventLoop) -> S
 
 class User(BaseModel):
     name: str
+    delay: Optional[float] = None
 
 
 class Greeting(BaseModel):
@@ -84,6 +85,8 @@ def _entrypoint(
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:
+        if message.delay:
+            await asyncio.sleep(message.delay)
         return Greeting(name=message.name, greeting=f"Hello, {message.name}!")
 
     return greet

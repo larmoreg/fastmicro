@@ -2,9 +2,8 @@
 
 from pydantic import BaseModel
 
-from fastmicro.messaging.redis import Messaging
+from fastmicro.messaging.redis import Messaging, Topic
 from fastmicro.service import Service
-from fastmicro.topic import Topic
 
 
 class User(BaseModel):
@@ -18,16 +17,15 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
+user_topic = Topic[User]("user", messaging)
+greeting_topic = Topic[Greeting]("greeting", messaging)
 
-greet_user_topic = Topic("greet_user", User)
-greeting_topic = Topic("greeting", Greeting)
 
-
-@service.entrypoint(greet_user_topic, greeting_topic)
+@service.entrypoint(user_topic, greeting_topic)
 async def greet(user: User) -> Greeting:
-    print(user.dict())
+    print(user)
     greeting = Greeting(name=user.name, greeting=f"Hello, {user.name}!")
-    print(greeting.dict())
+    print(greeting)
     return greeting
 
 

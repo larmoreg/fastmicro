@@ -13,8 +13,7 @@ from fastmicro.env import (
     RETRIES,
     SLEEP_TIME,
 )
-from fastmicro.messaging import HT, MessagingABC
-from fastmicro.topic import Topic
+from fastmicro.messaging import HeaderABC, TopicABC
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +25,14 @@ class Entrypoint(Generic[AT, BT]):
     def __init__(
         self,
         name: str,
-        messaging: MessagingABC,
         callback: Callable[[AT], Awaitable[BT]],
-        topic: Topic[AT],
-        reply_topic: Topic[BT],
+        topic: TopicABC[AT],
+        reply_topic: TopicABC[BT],
         consumer_name: str = str(uuid4()),
         broadcast: bool = False,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
         self.name = name
-        self.messaging = messaging
         self.callback = callback
         self.topic = topic
         self.reply_topic = reply_topic
@@ -72,35 +69,37 @@ class Entrypoint(Generic[AT, BT]):
         resends: int = RESENDS,
     ) -> bool:
         if batch_size:
-            async with self.messaging.receive_batch(
-                self.topic,
+            async with self.topic.receive_batch(
                 self.name if not self.broadcast else self.broadcast_name,
                 self.consumer_name,
                 batch_size=batch_size,
                 timeout=messaging_timeout,
-            ) as (input_headers, input_messages):
+            ) as input_headers:
                 if input_headers:
                     if logger.isEnabledFor(logging.DEBUG):
-                        for input_message in input_messages:
-                            logger.debug(f"Processing: {input_message}")
+                        for input_header in input_headers:
+                            logger.debug(f"Processing: {input_header.message}")
 
                     attempt = 0
                     while True:
                         try:
                             output_headers = [
-                                self.messaging.header_type(
-                                    correlation_id=input_header.correlation_id
+                                self.reply_topic.header(
+                                    correlation_id=input_header.correlation_id,
                                 )
                                 for input_header in input_headers
                             ]
-
                             tasks = [
-                                self.callback(input_message)
-                                for input_message in input_messages
+                                self.callback(cast(AT, input_header.message))
+                                for input_header in input_headers
                             ]
                             output_messages = await asyncio.wait_for(
                                 asyncio.gather(*tasks), timeout=processing_timeout
                             )
+                            for (output_header, output_message) in zip(
+                                output_headers, output_messages
+                            ):
+                                output_header.message = output_message
                         except asyncio.CancelledError as e:
                             raise e
                         except Exception as e:
@@ -124,47 +123,39 @@ class Entrypoint(Generic[AT, BT]):
                                     logger.exception(
                                         f"Processing failed; resend {temp}"
                                     )
-                                    await self.messaging.send_batch(
-                                        self.topic, input_headers, input_messages
-                                    )
+                                    await self.topic.send_batch(input_headers)
                                     return False
                                 else:
                                     logger.exception("Processing failed; skipping")
                                     for output_header in output_headers:
                                         output_header.error = str(e)
-                                    await self.messaging.send_batch(
-                                        self.reply_topic,
-                                        output_headers,
-                                    )
+                                    await self.reply_topic.send_batch(output_headers)
                                     return False
                         break
 
                     if logger.isEnabledFor(logging.DEBUG):
-                        for output_message in output_messages:
-                            logger.debug(f"Result: {output_message}")
-                    await self.messaging.send_batch(
-                        self.reply_topic, output_headers, output_messages
-                    )
+                        for output_header in output_headers:
+                            logger.debug(f"Result: {output_header.message}")
+                    await self.reply_topic.send_batch(output_headers)
         else:
-            async with self.messaging.receive(
-                self.topic,
+            async with self.topic.receive(
                 self.name if not self.broadcast else self.broadcast_name,
                 self.consumer_name,
                 timeout=messaging_timeout,
-            ) as (input_header, input_message):
-                logger.debug(f"Processing: {input_message}")
+            ) as input_header:
+                logger.debug(f"Processing: {input_header.message}")
 
                 attempt = 0
                 while True:
                     try:
-                        if input_header.correlation_id:
-                            output_header = self.messaging.header_type(
-                                correlation_id=input_header.correlation_id
-                            )
-
-                        output_message = await asyncio.wait_for(
-                            self.callback(input_message), timeout=processing_timeout
+                        output_header = self.reply_topic.header(
+                            correlation_id=input_header.correlation_id,
                         )
+                        output_message = await asyncio.wait_for(
+                            self.callback(cast(AT, input_header.message)),
+                            timeout=processing_timeout,
+                        )
+                        output_header.message = output_message
                         break
                     except asyncio.CancelledError as e:
                         raise e
@@ -186,22 +177,16 @@ class Entrypoint(Generic[AT, BT]):
                                 if resends > 0:
                                     temp += f" / {resends}"
                                 logger.exception(f"Processing failed; resend {temp}")
-                                await self.messaging.send(
-                                    self.topic, input_header, input_message
-                                )
+                                await self.topic.send(input_header)
                                 return False
                             else:
                                 logger.exception("Processing failed; skipping")
                                 output_header.error = str(e)
-                                await self.messaging.send(
-                                    self.reply_topic, output_header
-                                )
+                                await self.reply_topic.send(output_header)
                                 return False
 
-                logger.debug(f"Result: {output_message}")
-                await self.messaging.send(
-                    self.reply_topic, output_header, output_message
-                )
+                logger.debug(f"Result: {output_header.message}")
+                await self.reply_topic.send(output_header)
 
         return True
 
@@ -214,28 +199,27 @@ class Entrypoint(Generic[AT, BT]):
         input_message: AT,
         timeout: Optional[float] = CALL_TIMEOUT,
     ) -> BT:
-        input_header = self.messaging.header_type(correlation_id=uuid4())
+        input_header = self.topic.header(correlation_id=uuid4(), message=input_message)
 
-        await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)
+        await self.reply_topic.subscribe(self.broadcast_name)
 
-        logger.debug(f"Calling: {input_message}")
-        await self.messaging.send(self.topic, input_header, input_message)
+        logger.debug(f"Calling: {input_header.message}")
+        await self.topic.send(input_header)
 
         while True:
-            async with self.messaging.receive(
-                self.reply_topic,
+            async with self.reply_topic.receive(
                 self.broadcast_name,
                 self.consumer_name,
                 timeout=timeout,
-            ) as (output_header, output_message):
+            ) as output_header:
                 if output_header.correlation_id == input_header.correlation_id:
                     break
 
         if output_header.error:
             raise RuntimeError(output_header.error)
 
-        logger.debug(f"Result: {output_message}")
-        return cast(BT, output_message)
+        logger.debug(f"Result: {output_header.message}")
+        return cast(BT, output_header.message)
 
     async def call_batch(
         self,
@@ -244,50 +228,42 @@ class Entrypoint(Generic[AT, BT]):
         timeout: Optional[float] = CALL_TIMEOUT,
     ) -> List[BT]:
         input_headers = [
-            self.messaging.header_type(correlation_id=uuid4())
+            self.topic.header(correlation_id=uuid4(), message=input_message)
             for input_message in input_messages
         ]
 
-        await self.messaging.subscribe(self.reply_topic.name, self.broadcast_name)
+        await self.reply_topic.subscribe(self.broadcast_name)
 
-        output_headers: List[HT] = list()
-        output_messages: List[BT] = list()
-        for i in range(0, len(input_messages), batch_size):
+        output_headers: List[HeaderABC[BT]] = list()
+        for i in range(0, len(input_headers), batch_size):
             j = i + batch_size
             temp_input_headers = input_headers[i:j]
-            temp_input_messages = input_messages[i:j]
 
             if logger.isEnabledFor(logging.DEBUG):
-                for input_message in temp_input_messages:
-                    logger.debug(f"Calling: {input_message}")
-            await self.messaging.send_batch(
-                self.topic, temp_input_headers, temp_input_messages
-            )
+                for input_header in temp_input_headers:
+                    logger.debug(f"Calling: {input_header.message}")
+            await self.topic.send_batch(temp_input_headers)
 
             correlation_ids = set(
                 input_header.correlation_id for input_header in temp_input_headers
             )
             while correlation_ids:
-                async with self.messaging.receive_batch(
-                    self.reply_topic,
+                async with self.reply_topic.receive_batch(
                     self.broadcast_name,
                     self.consumer_name,
                     batch_size=batch_size,
                     timeout=timeout,
-                ) as (temp_output_headers, temp_output_messages):
-                    for output_header, output_message in zip(
-                        temp_output_headers, temp_output_messages
-                    ):
+                ) as temp_output_headers:
+                    for output_header in temp_output_headers:
                         if output_header.correlation_id in correlation_ids:
                             correlation_ids.remove(output_header.correlation_id)
                             output_headers.append(output_header)
-                            output_messages.append(output_message)
 
         for output_header in output_headers:
             if output_header.error:
                 raise RuntimeError(output_header.error)
 
         if logger.isEnabledFor(logging.DEBUG):
-            for output_message in output_messages:
-                logger.debug(f"Result: {output_message}")
-        return output_messages
+            for output_header in output_headers:
+                logger.debug(f"Result: {output_header.message}")
+        return [cast(BT, output_header.message) for output_header in output_headers]

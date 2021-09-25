@@ -2,10 +2,10 @@ import asyncio
 import logging
 import pytest
 from timeit import default_timer as timer
-from uuid import uuid4
+from typing import Type
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import MessagingABC
+from fastmicro.serializer import SerializerABC
 
 from .conftest import User, Greeting
 
@@ -13,23 +13,23 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
-async def test_serializer_performance(serializer_type) -> None:
+async def test_serializer_performance(serializer_type: Type[SerializerABC]) -> None:
     input_messages = [User(name=f"{i}") for i in range(1000)]
 
-    tasks = [
+    serialize_tasks = [
         serializer_type.serialize(input_message.dict())
         for input_message in input_messages
     ]
     start = timer()
-    temp_messages = await asyncio.gather(*tasks)
+    temp_messages = await asyncio.gather(*serialize_tasks)
     end = timer()
     diff1 = end - start
 
-    tasks = [
+    deserialize_tasks = [
         serializer_type.deserialize(temp_message) for temp_message in temp_messages
     ]
     start = timer()
-    output_messages = await asyncio.gather(*tasks)
+    output_messages = await asyncio.gather(*deserialize_tasks)
     end = timer()
     diff2 = end - start
 

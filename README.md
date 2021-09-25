@@ -49,9 +49,8 @@ The in-memory backend cannot be used for inter-process communication.
 import asyncio
 from pydantic import BaseModel
 
-from fastmicro.messaging.memory import Messaging
+from fastmicro.messaging.memory import Messaging, Topic
 from fastmicro.service import Service
-from fastmicro.topic import Topic
 
 
 class User(BaseModel):
@@ -65,12 +64,11 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
+user_topic = Topic[User]("user", messaging)
+greeting_topic = Topic[Greeting]("greeting", messaging)
 
-greet_user_topic = Topic("greet_user", User)
-greeting_topic = Topic("greeting", Greeting)
 
-
-@service.entrypoint(greet_user_topic, greeting_topic)
+@service.entrypoint(user_topic, greeting_topic)
 async def greet(user: User) -> Greeting:
     greeting = Greeting(name=user.name, greeting=f"Hello, {user.name}!")
     return greeting
@@ -80,9 +78,9 @@ async def main() -> None:
     await service.start()
 
     user = User(name="Greg")
-    print(user.dict())
+    print(user)
     greeting = await greet.call(user)
-    print(greeting.dict())
+    print(greeting)
 
     await service.stop()
 
@@ -129,9 +127,8 @@ This example shows how to use the Redis backend for inter-process communication.
 
 from pydantic import BaseModel
 
-from fastmicro.messaging.redis import Messaging
+from fastmicro.messaging.redis import Messaging, Topic
 from fastmicro.service import Service
-from fastmicro.topic import Topic
 
 
 class User(BaseModel):
@@ -145,16 +142,15 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
+user_topic = Topic[User]("user", messaging)
+greeting_topic = Topic[Greeting]("greeting", messaging)
 
-greet_user_topic = Topic("greet_user", User)
-greeting_topic = Topic("greeting", Greeting)
 
-
-@service.entrypoint(greet_user_topic, greeting_topic)
+@service.entrypoint(user_topic, greeting_topic)
 async def greet(user: User) -> Greeting:
-    print(user.dict())
+    print(user)
     greeting = Greeting(name=user.name, greeting=f"Hello, {user.name}!")
-    print(greeting.dict())
+    print(greeting)
     return greeting
 
 
@@ -170,9 +166,8 @@ if __name__ == "__main__":
 import asyncio
 from pydantic import BaseModel
 
-from fastmicro.messaging.redis import Messaging
+from fastmicro.messaging.redis import Messaging, Topic
 from fastmicro.service import Service
-from fastmicro.topic import Topic
 
 
 class User(BaseModel):
@@ -186,25 +181,21 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
+user_topic = Topic[User]("user", messaging)
+greeting_topic = Topic[Greeting]("greeting", messaging)
 
-greet_user_topic = Topic("greet_user", User)
-greeting_topic = Topic("greeting", Greeting)
 
-
-@service.entrypoint(greet_user_topic, greeting_topic)
+@service.entrypoint(user_topic, greeting_topic)
 async def greet(user: User) -> Greeting:
     ...
 
 
 async def main() -> None:
-    await messaging.connect()
-
-    user = User(name="Greg")
-    print(user.dict())
-    greeting = await greet.call(user)
-    print(greeting.dict())
-
-    await messaging.cleanup()
+    async with messaging:
+        user = User(name="Greg")
+        print(user)
+        greeting = await greet.call(user)
+        print(greeting)
 
 
 if __name__ == "__main__":

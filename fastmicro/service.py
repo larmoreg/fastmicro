@@ -1,16 +1,12 @@
 import asyncio
 import atexit
 from functools import partial
-import logging
 import signal
 from typing import Any, Awaitable, Callable, List, Optional
 import uvloop
 
 from fastmicro.entrypoint import AT, BT, Entrypoint
-from fastmicro.messaging import MessagingABC
-from fastmicro.topic import Topic
-
-logger = logging.getLogger(__name__)
+from fastmicro.messaging import MessagingABC, TopicABC
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 uvloop.install()
@@ -30,22 +26,23 @@ class Service:
 
         self.name = name
         self.messaging = messaging
-        self.entrypoints: List[Entrypoint] = list()
+        self.start_callbacks: List[Callable[[], Awaitable[None]]] = list()
+        self.stop_callbacks: List[Callable[[], Awaitable[None]]] = list()
 
     def entrypoint(
-        self, topic: Topic[AT], reply_topic: Topic[BT], **kwargs: Any
+        self, topic: TopicABC[AT], reply_topic: TopicABC[BT], **kwargs: Any
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
-            entrypoint = Entrypoint(
+            entrypoint = Entrypoint[AT, BT](
                 self.name + "_" + callback.__name__,
-                self.messaging,
                 callback,
                 topic,
                 reply_topic,
                 loop=self.loop,
                 **kwargs,
             )
-            self.entrypoints.append(entrypoint)
+            self.start_callbacks.append(entrypoint.start)
+            self.stop_callbacks.append(entrypoint.stop)
             return entrypoint
 
         return _entrypoint
@@ -53,7 +50,7 @@ class Service:
     async def start(self) -> None:
         await self.messaging.connect()
 
-        tasks = [entrypoint.start() for entrypoint in self.entrypoints]
+        tasks = [start_callback() for start_callback in self.start_callbacks]
         await asyncio.gather(*tasks)
 
     def run(self) -> None:
@@ -62,7 +59,7 @@ class Service:
         self.loop.run_forever()
 
     async def stop(self) -> None:
-        tasks = [entrypoint.stop() for entrypoint in self.entrypoints]
+        tasks = [stop_callback() for stop_callback in self.stop_callbacks]
         await asyncio.gather(*tasks)
 
         await self.messaging.cleanup()

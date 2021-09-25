@@ -1,11 +1,17 @@
 import aiokafka
 import asyncio
-import logging
+from contextlib import asynccontextmanager
 import sys
+import typing
 from typing import (
+    Any,
+    AsyncIterator,
+    cast,
     Dict,
-    List,
+    Generic,
     Optional,
+    Set,
+    Sequence,
     Tuple,
     Type,
 )
@@ -15,35 +21,42 @@ from fastmicro.env import (
     MESSAGING_TIMEOUT,
     KAFKA_BOOTSTRAP_SERVERS,
 )
-from fastmicro.messaging import HeaderABC, HT, MessagingABC
-from fastmicro.topic import T, Topic
+from fastmicro.messaging import T, HeaderABC, MessagingABC, TopicABC
+from fastmicro.serializer import SerializerABC
+from fastmicro.serializer.json import Serializer
 
-logger = logging.getLogger(__name__)
 
-
-class Header(HeaderABC):
+class Header(HeaderABC[T], Generic[T]):
     partition: Optional[int] = None
     offset: Optional[int] = None
 
 
-header_topic = Topic("", Header)
-
-
 class Messaging(MessagingABC):
-    header_type: Type[HT] = Header
+    class ConsumerRebalanceListener(aiokafka.ConsumerRebalanceListener):  # type: ignore
+        def __init__(self, lock: asyncio.Lock):
+            self.lock = lock
+
+        async def on_partitions_revoked(
+            self, revoked: Set[aiokafka.TopicPartition]
+        ) -> None:
+            await self.lock.acquire()
+
+        async def on_partitions_assigned(
+            self, assigned: Set[aiokafka.TopicPartition]
+        ) -> None:
+            self.lock.release()
 
     def __init__(
         self,
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        if loop:
-            self.loop = loop
-        else:
-            self.loop = asyncio.get_event_loop()
-        super().__init__(self.loop)
-
         self.bootstrap_servers = bootstrap_servers
+        super().__init__(loop)
+
+    async def connect(self) -> None:
+        self.lock = asyncio.Lock(loop=self.loop)
+        self.listener = self.ConsumerRebalanceListener(self.lock)
         self.consumers: Dict[Tuple[str, str], aiokafka.AIOKafkaConsumer] = dict()
         self.producers: Dict[str, aiokafka.AIOKafkaProducer] = dict()
 
@@ -60,7 +73,6 @@ class Messaging(MessagingABC):
         key = topic_name, group_name
         if key not in self.consumers:
             consumer = aiokafka.AIOKafkaConsumer(
-                topic_name,
                 bootstrap_servers=self.bootstrap_servers,
                 loop=self.loop,
                 group_id=group_name,
@@ -68,6 +80,7 @@ class Messaging(MessagingABC):
                 enable_auto_commit=False,
                 isolation_level="read_committed",
             )
+            consumer.subscribe([topic_name], listener=self.listener)
             await consumer.start()
             self.consumers[key] = consumer
         return self.consumers[key]
@@ -82,73 +95,95 @@ class Messaging(MessagingABC):
             self.producers[topic_name] = producer
         return self.producers[topic_name]
 
-    async def subscribe(self, topic_name: str, group_name: str) -> None:
-        await self._get_consumer(topic_name, group_name)
 
-    @staticmethod
+class Topic(TopicABC[T], Generic[T]):
+    def header(self, **kwargs: Any) -> Header[T]:
+        T = typing.get_args(self.__orig_class__)  # type: ignore
+        return Header[T](**kwargs)  # type: ignore
+
+    def __init__(
+        self,
+        name: str,
+        messaging: Messaging,
+        serializer_type: Type[SerializerABC] = Serializer,
+    ):
+        self.name = name
+        self.messaging: Messaging = messaging
+        self.serializer_type = serializer_type
+
+    async def serialize(self, header: HeaderABC[T]) -> bytes:
+        return await self.serializer_type.serialize(header.dict())
+
+    async def deserialize(self, serialized: bytes) -> Header[T]:
+        data = await self.serializer_type.deserialize(serialized)
+        return self.header(**data)
+
+    async def subscribe(self, group_name: str) -> None:
+        await self.messaging._get_consumer(self.name, group_name)
+
     async def _raw_receive(
-        topic: Topic[T], temp_message: aiokafka.structs.ConsumerRecord
-    ) -> Tuple[Header, Optional[T]]:
-        header = await header_topic.deserialize(temp_message.value)
+        self,
+        temp_message: aiokafka.structs.ConsumerRecord,
+    ) -> HeaderABC[T]:
+        header = await self.deserialize(temp_message.value)
         header.partition = temp_message.partition
         header.offset = temp_message.offset
+        return header
 
-        message = None
-        if header.data:
-            message = await topic.deserialize(header.data)
-        return header, message
-
+    @asynccontextmanager
     async def _receive(
         self,
-        topic: Topic[T],
         group_name: str,
         consumer_name: str,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Tuple[Header, T]:
-        consumer = await self._get_consumer(topic.name, group_name)
+    ) -> AsyncIterator[HeaderABC[T]]:
+        consumer = await self.messaging._get_consumer(self.name, group_name)
         message = await asyncio.wait_for(consumer.getone(), timeout=timeout)
-        return await self._raw_receive(topic, message)
+        await self.messaging.lock.acquire()
+        yield await self._raw_receive(message)
+        self.messaging.lock.release()
 
+    @asynccontextmanager
     async def _receive_batch(
         self,
-        topic: Topic[T],
         group_name: str,
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Tuple[List[Header], List[T]]:
-        consumer = await self._get_consumer(topic.name, group_name)
+    ) -> AsyncIterator[Sequence[HeaderABC[T]]]:
+        consumer = await self.messaging._get_consumer(self.name, group_name)
         temp = await consumer.getmany(
             timeout_ms=int(timeout * 1000) if timeout is not None else sys.maxsize,
             max_records=batch_size,
         )
 
+        await self.messaging.lock.acquire()
         tasks = [
-            self._raw_receive(topic, message)
+            self._raw_receive(message)
             for _, messages in temp.items()
             for message in messages
         ]
         if not tasks:
             raise asyncio.TimeoutError
 
-        results = await asyncio.gather(*tasks)
-        output_headers, output_messages = zip(*results)
-        return output_headers, output_messages
+        yield await asyncio.gather(*tasks)
+        self.messaging.lock.release()
 
-    async def _ack(self, topic_name: str, group_name: str, header: Header) -> None:
-        tp = aiokafka.TopicPartition(topic_name, header.partition)
-        assert header.offset is not None
-        offsets = {tp: header.offset + 1}
+    async def _ack(self, group_name: str, header: HeaderABC[T]) -> None:
+        header = cast(Header[T], header)
+        tp = aiokafka.TopicPartition(self.name, header.partition)
+        offsets = {tp: cast(int, header.offset) + 1}
 
-        consumer = await self._get_consumer(topic_name, group_name)
+        consumer = await self.messaging._get_consumer(self.name, group_name)
         await consumer.commit(offsets)
 
     async def _ack_batch(
-        self, topic_name: str, group_name: str, headers: List[Header]
+        self, group_name: str, headers: Sequence[HeaderABC[T]]
     ) -> None:
+        headers = cast(Sequence[Header[T]], headers)
         partitions = set(map(lambda x: x.partition, headers))
         offsets = {
-            aiokafka.TopicPartition(topic_name, partition): max(
+            aiokafka.TopicPartition(self.name, partition): max(
                 map(
                     lambda x: x.offset + 1,  # type: ignore
                     filter(lambda x: x.partition == partition, headers),
@@ -157,46 +192,30 @@ class Messaging(MessagingABC):
             for partition in partitions
         }
 
-        consumer = await self._get_consumer(topic_name, group_name)
+        consumer = await self.messaging._get_consumer(self.name, group_name)
         await consumer.commit(offsets)
 
-    async def _nack(self, topic_name: str, group_name: str, header: Header) -> None:
+    async def _nack(self, group_name: str, header: HeaderABC[T]) -> None:
         pass
 
     async def _nack_batch(
-        self, topic_name: str, group_name: str, headers: List[Header]
+        self, group_name: str, headers: Sequence[HeaderABC[T]]
     ) -> None:
         pass
 
-    @staticmethod
     async def _raw_send(
+        self,
         producer: aiokafka.AIOKafkaProducer,
-        topic: Topic[T],
-        header: Header,
-        message: Optional[T] = None,
+        header: HeaderABC[T],
     ) -> None:
-        if message:
-            serialized = await topic.serialize(message)
-            header.data = serialized
+        serialized = await self.serialize(header)
+        await producer.send_and_wait(self.name, serialized)
 
-        serialized = await header_topic.serialize(header)
-        await producer.send_and_wait(topic.name, serialized)
+    async def _send(self, header: HeaderABC[T]) -> None:
+        producer = await self.messaging._get_producer(self.name)
+        await self._raw_send(producer, header)
 
-    async def _send(
-        self, topic: Topic[T], header: Header, message: Optional[T] = None
-    ) -> None:
-        producer = await self._get_producer(topic.name)
-        await self._raw_send(producer, topic, header, message)
-
-    async def _send_batch(
-        self, topic: Topic[T], headers: List[Header], messages: Optional[List[T]] = None
-    ) -> None:
-        producer = await self._get_producer(topic.name)
-        if messages:
-            tasks = [
-                self._raw_send(producer, topic, header, message)
-                for header, message in zip(headers, messages)
-            ]
-        else:
-            tasks = [self._raw_send(producer, topic, header) for header in headers]
+    async def _send_batch(self, headers: Sequence[HeaderABC[T]]) -> None:
+        producer = await self.messaging._get_producer(self.name)
+        tasks = [self._raw_send(producer, header) for header in headers]
         await asyncio.gather(*tasks)

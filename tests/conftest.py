@@ -8,10 +8,9 @@ import pytest
 from typing import AsyncGenerator, cast, Optional, Type
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import MessagingABC
+from fastmicro.messaging import MessagingABC, TopicABC
 from fastmicro.serializer import SerializerABC
 from fastmicro.service import Service
-from fastmicro.topic import Topic
 
 backends = ["fastmicro.messaging.memory"]
 if find_spec("aiokafka"):
@@ -26,30 +25,36 @@ if find_spec("msgpack"):
     serializers.append("fastmicro.serializer.msgpack")
 
 logging.config.fileConfig("logging.ini", disable_existing_loggers=False)
-logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(params=backends)
+@pytest.fixture(scope="session")
+def event_loop() -> asyncio.AbstractEventLoop:
+    return asyncio.get_event_loop()
+
+
+@pytest.fixture(params=backends, scope="session")
 def backend(request) -> str:  # type: ignore
     return cast(str, request.param)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def messaging_type(backend: str) -> Type[MessagingABC]:
     return __import__(backend, fromlist=("Messaging",)).Messaging  # type: ignore
 
 
-@pytest.fixture(params=serializers)
+@pytest.fixture(params=serializers, scope="session")
 def serializer_type(request) -> Type[SerializerABC]:  # type: ignore
     return __import__(cast(str, request.param), fromlist=("Serializer",)).Serializer  # type: ignore
 
 
-@pytest.fixture
-def messaging(
+@pytest.fixture(scope="session")
+async def messaging(
     messaging_type: Type[MessagingABC],
     event_loop: asyncio.AbstractEventLoop,
-) -> MessagingABC:
-    return messaging_type(loop=event_loop)
+) -> AsyncGenerator[MessagingABC, None]:
+    messaging = messaging_type(loop=event_loop)
+    async with messaging:
+        yield messaging
 
 
 @pytest.fixture
@@ -68,20 +73,30 @@ class Greeting(BaseModel):
 
 
 @pytest.fixture
-def user_topic(serializer_type: Type[SerializerABC]) -> Topic[User]:
-    return Topic("user", User, serializer_type=serializer_type)
+def user_topic(
+    backend: str,
+    messaging: MessagingABC,
+    serializer_type: Type[SerializerABC],
+) -> TopicABC[User]:
+    topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
+    return topic_type[User]("user", messaging, serializer_type=serializer_type)  # type: ignore
 
 
 @pytest.fixture
-def greeting_topic(serializer_type: Type[SerializerABC]) -> Topic[Greeting]:
-    return Topic("greeting", Greeting, serializer_type=serializer_type)
+def greeting_topic(
+    backend: str,
+    messaging: MessagingABC,
+    serializer_type: Type[SerializerABC],
+) -> TopicABC[Greeting]:
+    topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
+    return topic_type[Greeting]("greeting", messaging, serializer_type=serializer_type)  # type: ignore
 
 
 @pytest.fixture
 def _entrypoint(
     service: Service,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
+    user_topic: TopicABC[User],
+    greeting_topic: TopicABC[Greeting],
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:
@@ -104,8 +119,8 @@ async def entrypoint(
 @pytest.fixture
 async def invalid(
     service: Service,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
+    user_topic: TopicABC[User],
+    greeting_topic: TopicABC[Greeting],
 ) -> AsyncGenerator[Entrypoint[User, Greeting], None]:
     @service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:

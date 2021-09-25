@@ -1,25 +1,29 @@
 import asyncio
-import logging
+from contextlib import asynccontextmanager
+import typing
 from typing import (
+    Any,
+    AsyncIterator,
+    cast,
     Dict,
     Generic,
     Optional,
+    Sequence,
     Tuple,
     Type,
     TypeVar,
 )
 
-from fastmicro.env import MESSAGING_TIMEOUT
-from fastmicro.messaging import HeaderABC, HT, MessagingABC
-from fastmicro.topic import T, Topic
-
-logger = logging.getLogger(__name__)
+from fastmicro.env import BATCH_SIZE, MESSAGING_TIMEOUT
+from fastmicro.messaging import T, HeaderABC, MessagingABC, TopicABC
+from fastmicro.serializer import SerializerABC
+from fastmicro.serializer.json import Serializer
 
 QT = TypeVar("QT")
 
 
 class Queue(Generic[QT]):
-    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None):
         if loop:
             self.loop = loop
         else:
@@ -55,68 +59,79 @@ class Queue(Generic[QT]):
             await self.nacked.put((message_id, item))
 
 
-class Header(HeaderABC):
+class Header(HeaderABC[T], Generic[T]):
     message_id: Optional[bytes] = None
 
 
-header_topic = Topic("", Header)
-
-
 class Messaging(MessagingABC):
-    header_type: Type[HT] = Header
-
     def __init__(
         self,
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> None:
-        if loop:
-            self.loop = loop
-        else:
-            self.loop = asyncio.get_event_loop()
-        super().__init__(self.loop)
-
         self.queues: Dict[str, Queue[bytes]] = dict()
+
+        super().__init__(loop)
 
     async def _get_queue(self, topic_name: str) -> Queue[bytes]:
         if topic_name not in self.queues:
             self.queues[topic_name] = Queue(self.loop)
         return self.queues[topic_name]
 
-    async def _receive(
+
+class Topic(TopicABC[T], Generic[T]):
+    def header(self, **kwargs: Any) -> Header[T]:
+        T = typing.get_args(self.__orig_class__)  # type: ignore
+        return Header[T](**kwargs)  # type: ignore
+
+    def __init__(
         self,
-        topic: Topic[T],
+        name: str,
+        messaging: Messaging,
+        serializer_type: Type[SerializerABC] = Serializer,
+    ):
+        self.name = name
+        self.messaging: Messaging = messaging
+        self.serializer_type = serializer_type
+
+    async def serialize(self, header: HeaderABC[T]) -> bytes:
+        return await self.serializer_type.serialize(header.dict())
+
+    async def deserialize(self, serialized: bytes) -> Header[T]:
+        data = await self.serializer_type.deserialize(serialized)
+        return self.header(**data)
+
+    async def _raw_receive(
+        self, queue: Queue[bytes], timeout: Optional[float] = MESSAGING_TIMEOUT
+    ) -> Header[T]:
+        message_id, serialized = await asyncio.wait_for(queue.get(), timeout=timeout)
+        header = await self.deserialize(serialized)
+        header.message_id = message_id
+        return header
+
+    @asynccontextmanager
+    async def _receive_batch(
+        self,
         group_name: str,
         consumer_name: str,
+        batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Tuple[Header, Optional[T]]:
-        queue = await self._get_queue(topic.name)
-        message_id, serialized = await asyncio.wait_for(queue.get(), timeout=timeout)
-        header = await header_topic.deserialize(serialized)
-        header.message_id = message_id
+    ) -> AsyncIterator[Sequence[Header[T]]]:
+        queue = await self.messaging._get_queue(self.name)
+        tasks = [self._raw_receive(queue) for i in range(batch_size)]
+        yield await asyncio.gather(*tasks)
 
-        message = None
-        if header.data:
-            message = await topic.deserialize(header.data)
-        return header, message
+    async def _ack(self, group_name: str, header: HeaderABC[T]) -> None:
+        header = cast(Header[T], header)
+        queue = await self.messaging._get_queue(self.name)
+        await queue.ack(cast(bytes, header.message_id))
 
-    async def _ack(self, topic_name: str, group_name: str, header: Header) -> None:
-        queue = await self._get_queue(topic_name)
-        assert header.message_id
-        await queue.ack(header.message_id)
+    async def _nack(self, group_name: str, header: HeaderABC[T]) -> None:
+        header = cast(Header[T], header)
+        queue = await self.messaging._get_queue(self.name)
+        await queue.nack(cast(bytes, header.message_id))
 
-    async def _nack(self, topic_name: str, group_name: str, header: Header) -> None:
-        queue = await self._get_queue(topic_name)
-        assert header.message_id
-        await queue.nack(header.message_id)
-
-    async def _send(
-        self, topic: Topic[T], header: Header, message: Optional[T] = None
-    ) -> None:
-        queue = await self._get_queue(topic.name)
-
-        if message:
-            serialized = await topic.serialize(message)
-            header.data = serialized
-
-        serialized = await header_topic.serialize(header)
+    async def _send(self, header: HeaderABC[T]) -> None:
+        header = cast(Header[T], header)
+        queue = await self.messaging._get_queue(self.name)
+        serialized = await self.serialize(header)
         await queue.put(serialized)

@@ -3,7 +3,6 @@ import asyncio
 from contextlib import asynccontextmanager
 import logging
 import sys
-import typing
 from typing import (
     Any,
     AsyncIterator,
@@ -70,7 +69,7 @@ class Messaging(MessagingABC):
 
 class Topic(TopicABC[T], Generic[T]):
     def header(self, **kwargs: Any) -> Header[T]:
-        T = typing.get_args(self.__orig_class__)  # type: ignore
+        T = self.__orig_class__.__args__[0]  # type: ignore
         return Header[T](**kwargs)  # type: ignore
 
     def __init__(

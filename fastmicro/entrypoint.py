@@ -192,7 +192,11 @@ class Entrypoint(Generic[AT, BT]):
 
     async def process_loop(self) -> None:
         while True:
-            await self.process()
+            try:
+                await self.process()
+            except Exception as e:
+                logger.exception(e)
+                raise e
 
     async def call(
         self,

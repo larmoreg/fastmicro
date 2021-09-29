@@ -2,7 +2,7 @@ import asyncio
 import atexit
 from functools import partial
 import signal
-from typing import Any, Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, List
 import uvloop
 
 from fastmicro.entrypoint import AT, BT, Entrypoint
@@ -17,15 +17,11 @@ class Service:
         self,
         name: str,
         messaging: MessagingABC,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
-        if loop:
-            self.loop = loop
-        else:
-            self.loop = asyncio.get_event_loop()
-
         self.name = name
         self.messaging = messaging
+        self.loop = loop
         self.start_callbacks: List[Callable[[], Awaitable[None]]] = list()
         self.stop_callbacks: List[Callable[[], Awaitable[None]]] = list()
 

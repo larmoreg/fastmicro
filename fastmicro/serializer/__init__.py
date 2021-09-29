@@ -1,5 +1,5 @@
 import abc
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict
 from uuid import UUID
 
@@ -12,6 +12,8 @@ class SerializerABC(abc.ABC):
                 obj = UUID(obj["__value__"])
             elif obj["__type__"] == "datetime.datetime":
                 obj = datetime.fromisoformat(obj["__value__"])
+            elif obj["__type__"] == "datetime.date":
+                obj = date.fromisoformat(obj["__value__"])
             elif obj["__type__"] == "bytes":
                 obj = bytes.fromhex(obj["__value__"])
             else:
@@ -24,6 +26,8 @@ class SerializerABC(abc.ABC):
             obj = {"__type__": "uuid.UUID", "__value__": str(obj)}
         elif isinstance(obj, datetime):
             obj = {"__type__": "datetime.datetime", "__value__": obj.isoformat()}
+        elif isinstance(obj, date):
+            obj = {"__type__": "datetime.date", "__value__": obj.isoformat()}
         elif isinstance(obj, bytes):
             obj = {"__type__": "bytes", "__value__": obj.hex()}
         else:

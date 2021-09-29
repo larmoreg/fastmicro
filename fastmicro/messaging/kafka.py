@@ -48,7 +48,7 @@ class Messaging(MessagingABC):
     def __init__(
         self,
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
         self.bootstrap_servers = bootstrap_servers
         super().__init__(loop)

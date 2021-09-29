@@ -22,12 +22,8 @@ QT = TypeVar("QT")
 
 
 class Queue(Generic[QT]):
-    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None):
-        if loop:
-            self.loop = loop
-        else:
-            self.loop = asyncio.get_event_loop()
-
+    def __init__(self, loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()):
+        self.loop = loop
         self.nacked: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=self.loop)
         self.queue: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=self.loop)
         self.pending: Dict[bytes, QT] = dict()
@@ -65,10 +61,9 @@ class Header(HeaderABC[T], Generic[T]):
 class Messaging(MessagingABC):
     def __init__(
         self,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
         self.queues: Dict[str, Queue[bytes]] = dict()
-
         super().__init__(loop)
 
     async def _get_queue(self, topic_name: str) -> Queue[bytes]:

@@ -1,4 +1,6 @@
 import asyncio
+import docker as libdocker
+from docker.models.containers import Container
 from importlib import __import__
 from importlib.util import find_spec
 import logging
@@ -12,6 +14,7 @@ from fastmicro.messaging import MessagingABC, TopicABC
 from fastmicro.serializer import SerializerABC
 from fastmicro.service import Service
 
+backends = []
 backends = ["fastmicro.messaging.memory"]
 if find_spec("aiokafka"):
     backends.append("fastmicro.messaging.kafka")
@@ -19,8 +22,6 @@ if find_spec("aioredis"):
     backends.append("fastmicro.messaging.redis")
 
 serializers = ["fastmicro.serializer.json"]
-if find_spec("cbor2"):
-    serializers.append("fastmicro.serializer.cbor")
 if find_spec("msgpack"):
     serializers.append("fastmicro.serializer.msgpack")
 
@@ -38,6 +39,90 @@ def backend(request) -> str:  # type: ignore
 
 
 @pytest.fixture(scope="session")
+async def docker(backend: str) -> Optional[AsyncGenerator[Container, None]]:
+    _docker = libdocker.from_env()
+
+    if backend == "fastmicro.messaging.kafka":
+        kafka = _docker.containers.run(
+            image="aiolibs/kafka:2.12_2.4.0",
+            name="test-kafka",
+            ports={9092: 9092},
+            environment={
+                "ADVERTISED_HOST": "localhost",
+                "ADVERTISED_PORT": 9092,
+            },
+            tty=True,
+            detach=True,
+            remove=True,
+        )
+
+        async def _wait_for_kafka(url: str) -> None:
+            from aiokafka.client import AIOKafkaClient
+            from aiokafka.errors import KafkaConnectionError
+
+            while True:
+                try:
+                    client = AIOKafkaClient(bootstrap_servers=url)
+                    await client.bootstrap()
+
+                    if client.cluster.brokers():
+                        return
+                except KafkaConnectionError:
+                    await asyncio.sleep(0.1)
+                    pass
+                finally:
+                    await client.close()
+
+        try:
+            await asyncio.wait_for(_wait_for_kafka("localhost:9092"), timeout=60)
+        except asyncio.TimeoutError:
+            pytest.exit("Could not start Kafka server")
+
+        yield kafka
+
+        kafka.remove(force=True)
+    elif backend == "fastmicro.messaging.redis":
+        redis = _docker.containers.run(
+            image="redis:6.2.5",
+            name="test-redis",
+            ports={6379: 6379},
+            tty=True,
+            detach=True,
+            remove=True,
+        )
+
+        async def _wait_for_redis(url: str) -> None:
+            import aioredis
+            from aioredis.exceptions import ConnectionError
+
+            while True:
+                try:
+                    redis = aioredis.from_url(url)  # type: ignore
+
+                    await redis.set("foo", "bar")
+                    assert await redis.get("foo") == b"bar"
+                    return
+                except ConnectionError:
+                    await asyncio.sleep(0.1)
+                    pass
+
+        try:
+            await asyncio.wait_for(
+                _wait_for_redis("redis://localhost:6379"), timeout=60
+            )
+        except asyncio.TimeoutError:
+            pytest.exit("Could not start Redis server")
+
+        yield redis
+
+        redis.remove(force=True)
+    else:
+        yield None
+
+    _docker.close()
+
+
+@pytest.fixture(scope="session")
 def messaging_type(backend: str) -> Type[MessagingABC]:
     return __import__(backend, fromlist=("Messaging",)).Messaging  # type: ignore
 
@@ -49,6 +134,7 @@ def serializer_type(request) -> Type[SerializerABC]:  # type: ignore
 
 @pytest.fixture(scope="session")
 async def messaging(
+    docker: Optional[Container],
     messaging_type: Type[MessagingABC],
     event_loop: asyncio.AbstractEventLoop,
 ) -> AsyncGenerator[MessagingABC, None]:

@@ -34,7 +34,7 @@ class Messaging(MessagingABC):
     def __init__(
         self,
         address: str = REDIS_ADDRESS,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
+        loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
         self.address = address
         super().__init__(loop)

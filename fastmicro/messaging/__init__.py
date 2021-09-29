@@ -36,11 +36,8 @@ class HeaderABC(GenericModel, Generic[T]):
 
 
 class MessagingABC(abc.ABC):
-    def __init__(self, loop: Optional[asyncio.AbstractEventLoop] = None):
-        if loop:
-            self.loop = loop
-        else:
-            self.loop = asyncio.get_event_loop()
+    def __init__(self, loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()):
+        self.loop = loop
 
     async def __aenter__(self) -> "MessagingABC":
         await self.connect()

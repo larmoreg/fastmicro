@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from pydantic.generics import GenericModel
 from types import TracebackType
 from typing import (
-    Any,
     AsyncIterator,
     Generic,
     Optional,
@@ -59,8 +58,9 @@ class MessagingABC(abc.ABC):
 
 
 class TopicABC(abc.ABC, Generic[T]):
+    @property
     @abc.abstractmethod
-    def header(self, **kwargs: Any) -> HeaderABC[T]:
+    def header_type(self) -> Type[HeaderABC[T]]:
         raise NotImplementedError
 
     def __init__(

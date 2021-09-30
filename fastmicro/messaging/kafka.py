@@ -3,7 +3,6 @@ import asyncio
 from contextlib import asynccontextmanager
 import sys
 from typing import (
-    Any,
     AsyncIterator,
     cast,
     Dict,
@@ -96,8 +95,9 @@ class Messaging(MessagingABC):
 
 
 class Topic(TopicABC[T], Generic[T]):
-    def header(self, **kwargs: Any) -> Header[T]:
-        return Header[self.schema_type](**kwargs)  # type: ignore
+    @property
+    def header_type(self) -> Type[Header[T]]:
+        return Header[self.schema_type]  # type: ignore
 
     def __init__(
         self,
@@ -116,7 +116,7 @@ class Topic(TopicABC[T], Generic[T]):
 
     async def deserialize(self, serialized: bytes) -> Header[T]:
         data = await self.serializer_type.deserialize(serialized)
-        return self.header(**data)
+        return self.header_type(**data)
 
     async def subscribe(self, group_name: str) -> None:
         await self.messaging._get_consumer(self.name, group_name)

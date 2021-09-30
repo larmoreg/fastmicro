@@ -84,7 +84,7 @@ class Entrypoint(Generic[AT, BT]):
                     while True:
                         try:
                             output_headers = [
-                                self.reply_topic.header(
+                                self.reply_topic.header_type(
                                     correlation_id=input_header.correlation_id,
                                 )
                                 for input_header in input_headers
@@ -148,7 +148,7 @@ class Entrypoint(Generic[AT, BT]):
                 attempt = 0
                 while True:
                     try:
-                        output_header = self.reply_topic.header(
+                        output_header = self.reply_topic.header_type(
                             correlation_id=input_header.correlation_id,
                         )
                         output_message = await asyncio.wait_for(
@@ -203,7 +203,9 @@ class Entrypoint(Generic[AT, BT]):
         input_message: AT,
         timeout: Optional[float] = CALL_TIMEOUT,
     ) -> BT:
-        input_header = self.topic.header(correlation_id=uuid4(), message=input_message)
+        input_header = self.topic.header_type(
+            correlation_id=uuid4(), message=input_message
+        )
 
         await self.reply_topic.subscribe(self.broadcast_name)
 
@@ -232,7 +234,7 @@ class Entrypoint(Generic[AT, BT]):
         timeout: Optional[float] = CALL_TIMEOUT,
     ) -> List[BT]:
         input_headers = [
-            self.topic.header(correlation_id=uuid4(), message=input_message)
+            self.topic.header_type(correlation_id=uuid4(), message=input_message)
             for input_message in input_messages
         ]
 

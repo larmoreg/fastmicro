@@ -18,8 +18,8 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
-user_topic = Topic[User]("user", messaging)
-greeting_topic = Topic[Greeting]("greeting", messaging)
+user_topic = Topic("user", messaging, User)
+greeting_topic = Topic("greeting", messaging, Greeting)
 
 
 @service.entrypoint(user_topic, greeting_topic)

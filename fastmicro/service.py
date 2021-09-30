@@ -29,7 +29,7 @@ class Service:
         self, topic: TopicABC[AT], reply_topic: TopicABC[BT], **kwargs: Any
     ) -> Callable[[Callable[[AT], Awaitable[BT]]], Entrypoint[AT, BT]]:
         def _entrypoint(callback: Callable[[AT], Awaitable[BT]]) -> Entrypoint[AT, BT]:
-            entrypoint = Entrypoint[AT, BT](
+            entrypoint = Entrypoint(
                 self.name + "_" + callback.__name__,
                 callback,
                 topic,

@@ -165,7 +165,7 @@ def user_topic(
     serializer_type: Type[SerializerABC],
 ) -> TopicABC[User]:
     topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
-    return topic_type[User]("user", messaging, serializer_type=serializer_type)  # type: ignore
+    return topic_type("user", messaging, User, serializer_type=serializer_type)  # type: ignore
 
 
 @pytest.fixture
@@ -175,7 +175,7 @@ def greeting_topic(
     serializer_type: Type[SerializerABC],
 ) -> TopicABC[Greeting]:
     topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
-    return topic_type[Greeting]("greeting", messaging, serializer_type=serializer_type)  # type: ignore
+    return topic_type("greeting", messaging, Greeting, serializer_type=serializer_type)  # type: ignore
 
 
 @pytest.fixture

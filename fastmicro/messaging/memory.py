@@ -74,17 +74,18 @@ class Messaging(MessagingABC):
 
 class Topic(TopicABC[T], Generic[T]):
     def header(self, **kwargs: Any) -> Header[T]:
-        T = self.__orig_class__.__args__[0]  # type: ignore
-        return Header[T](**kwargs)  # type: ignore
+        return Header[self.schema_type](**kwargs)  # type: ignore
 
     def __init__(
         self,
         name: str,
         messaging: Messaging,
+        schema_type: Type[T],
         serializer_type: Type[SerializerABC] = Serializer,
     ):
         self.name = name
         self.messaging: Messaging = messaging
+        self.schema_type = schema_type
         self.serializer_type = serializer_type
 
     async def serialize(self, header: HeaderABC[T]) -> bytes:

@@ -67,18 +67,21 @@ class TopicABC(abc.ABC, Generic[T]):
         self,
         name: str,
         messaging: MessagingABC,
+        schema_type: Type[T],
         serializer_type: Type[SerializerABC] = Serializer,
     ):
         self.name = name
         self.messaging = messaging
+        self.schema_type = schema_type
         self.serializer_type = serializer_type
 
+    @abc.abstractmethod
     async def serialize(self, header: HeaderABC[T]) -> bytes:
-        return await self.serializer_type.serialize(header.dict())
+        raise NotImplementedError
 
+    @abc.abstractmethod
     async def deserialize(self, serialized: bytes) -> HeaderABC[T]:
-        data = await self.serializer_type.deserialize(serialized)
-        return self.header(**data)
+        raise NotImplementedError
 
     async def subscribe(self, group_name: str) -> None:
         pass

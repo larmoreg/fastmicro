@@ -64,8 +64,8 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
-user_topic = Topic("user", messaging)
-greeting_topic = Topic("greeting", messaging)
+user_topic = Topic("user", messaging, User)
+greeting_topic = Topic("greeting", messaging, Greeting)
 
 
 @service.entrypoint(user_topic, greeting_topic)
@@ -142,8 +142,8 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
-user_topic = Topic("user", messaging)
-greeting_topic = Topic("greeting", messaging)
+user_topic = Topic("user", messaging, User)
+greeting_topic = Topic("greeting", messaging, Greeting)
 
 
 @service.entrypoint(user_topic, greeting_topic)
@@ -181,8 +181,8 @@ class Greeting(BaseModel):
 
 messaging: Messaging = Messaging()
 service = Service("test", messaging)
-user_topic = Topic("user", messaging)
-greeting_topic = Topic("greeting", messaging)
+user_topic = Topic("user", messaging, User)
+greeting_topic = Topic("greeting", messaging, Greeting)
 
 
 @service.entrypoint(user_topic, greeting_topic)

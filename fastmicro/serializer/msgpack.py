@@ -1,14 +1,15 @@
 import msgpack
+from pydantic.json import pydantic_encoder
 from typing import Any, cast, Dict
 
 from fastmicro.serializer import SerializerABC
 
 
 class Serializer(SerializerABC):
-    @classmethod
-    async def serialize(cls, data: Dict[Any, Any]) -> bytes:
-        return cast(bytes, msgpack.dumps(data, default=cls.encode))
+    @staticmethod
+    async def serialize(data: Dict[Any, Any]) -> bytes:
+        return cast(bytes, msgpack.dumps(data, default=pydantic_encoder))
 
-    @classmethod
-    async def deserialize(cls, data: bytes) -> Dict[Any, Any]:
-        return cast(Dict[Any, Any], msgpack.loads(data, object_hook=cls.decode))
+    @staticmethod
+    async def deserialize(data: bytes) -> Dict[Any, Any]:
+        return cast(Dict[Any, Any], msgpack.loads(data))

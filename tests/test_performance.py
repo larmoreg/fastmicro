@@ -39,17 +39,22 @@ async def test_serializer_performance(serializer_type: Type[SerializerABC]) -> N
         for input_message in input_messages
     ]
     start = timer()
-    temp_messages = await asyncio.gather(*serialize_tasks)
+    serialized_messages = await asyncio.gather(*serialize_tasks)
     end = timer()
     diff1 = end - start
 
     deserialize_tasks = [
-        serializer_type.deserialize(temp_message) for temp_message in temp_messages
+        serializer_type.deserialize(serialized_message)
+        for serialized_message in serialized_messages
     ]
     start = timer()
-    output_messages = await asyncio.gather(*deserialize_tasks)
+    deserialized_messages = await asyncio.gather(*deserialize_tasks)
     end = timer()
     diff2 = end - start
+
+    output_messages = [
+        Dummy(**deserialized_message) for deserialized_message in deserialized_messages
+    ]
 
     diff = diff1 + diff2
     logger.info(f"{diff}s elapsed")

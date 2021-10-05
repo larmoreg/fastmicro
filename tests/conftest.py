@@ -144,7 +144,13 @@ async def messaging(
 
 
 @pytest.fixture
-def service(messaging: MessagingABC, event_loop: asyncio.AbstractEventLoop) -> Service:
+def service(
+    messaging: MessagingABC,
+    event_loop: asyncio.AbstractEventLoop,
+    caplog: pytest.LogCaptureFixture,
+) -> Service:
+    caplog.set_level(logging.CRITICAL, logger="aiokafka.consumer.group_coordinator")
+
     return Service("test", messaging, loop=event_loop)
 
 

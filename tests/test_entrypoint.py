@@ -1,3 +1,4 @@
+import logging
 import pytest
 
 from fastmicro.entrypoint import Entrypoint
@@ -16,9 +17,7 @@ async def test_entrypoint_await(_entrypoint: Entrypoint[User, Greeting]) -> None
 
 
 @pytest.mark.asyncio
-async def test_entrypoint_call(
-    entrypoint: Entrypoint[User, Greeting],
-) -> None:
+async def test_entrypoint_call(entrypoint: Entrypoint[User, Greeting]) -> None:
     input_message = User(name="Greg")
 
     output_message = await entrypoint.call(input_message)
@@ -28,9 +27,7 @@ async def test_entrypoint_call(
 
 
 @pytest.mark.asyncio
-async def test_entrypoint_call_batch(
-    entrypoint: Entrypoint[User, Greeting],
-) -> None:
+async def test_entrypoint_call_batch(entrypoint: Entrypoint[User, Greeting]) -> None:
     input_messages = [User(name="Cara"), User(name="Greg")]
 
     output_messages = await entrypoint.call_batch(input_messages, batch_size=2)
@@ -45,8 +42,10 @@ async def test_entrypoint_call_batch(
 
 @pytest.mark.asyncio
 async def test_entrypoint_exception(
-    invalid: Entrypoint[User, Greeting],
+    invalid: Entrypoint[User, Greeting], caplog: pytest.LogCaptureFixture
 ) -> None:
+    caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
+
     input_message = User(name="Greg")
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -57,8 +56,10 @@ async def test_entrypoint_exception(
 
 @pytest.mark.asyncio
 async def test_entrypoint_exception_batch(
-    invalid: Entrypoint[User, Greeting],
+    invalid: Entrypoint[User, Greeting], caplog: pytest.LogCaptureFixture
 ) -> None:
+    caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
+
     input_messages = [User(name="Cara"), User(name="Greg")]
 
     with pytest.raises(RuntimeError) as excinfo:

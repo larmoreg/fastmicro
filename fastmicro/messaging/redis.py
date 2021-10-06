@@ -119,13 +119,12 @@ class Topic(TopicABC[T], Generic[T]):
             if timeout > 0
             else None,
         )
+        if not temp:
+            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
 
         tasks = [
             self._raw_receive(message, message_id) for message_id, message in temp[0][1]
         ]
-        if not tasks:
-            raise asyncio.TimeoutError
-
         yield await asyncio.gather(*tasks)
 
     async def _ack(self, group_name: str, header: HeaderABC[T]) -> None:

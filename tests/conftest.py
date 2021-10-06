@@ -14,7 +14,6 @@ from fastmicro.messaging import MessagingABC, TopicABC
 from fastmicro.serializer import SerializerABC
 from fastmicro.service import Service
 
-backends = []
 backends = ["fastmicro.messaging.memory"]
 if find_spec("aiokafka"):
     backends.append("fastmicro.messaging.kafka")
@@ -168,20 +167,18 @@ class Greeting(BaseModel):
 def user_topic(
     backend: str,
     messaging: MessagingABC,
-    serializer_type: Type[SerializerABC],
 ) -> TopicABC[User]:
     topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
-    return topic_type("user", messaging, User, serializer_type=serializer_type)  # type: ignore
+    return topic_type("user", messaging, User)  # type: ignore
 
 
 @pytest.fixture
 def greeting_topic(
     backend: str,
     messaging: MessagingABC,
-    serializer_type: Type[SerializerABC],
 ) -> TopicABC[Greeting]:
     topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
-    return topic_type("greeting", messaging, Greeting, serializer_type=serializer_type)  # type: ignore
+    return topic_type("greeting", messaging, Greeting)  # type: ignore
 
 
 @pytest.fixture
@@ -209,15 +206,22 @@ async def entrypoint(
 
 
 @pytest.fixture
-async def invalid(
+def _invalid(
     service: Service,
     user_topic: TopicABC[User],
     greeting_topic: TopicABC[Greeting],
-) -> AsyncGenerator[Entrypoint[User, Greeting], None]:
+) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:
         raise RuntimeError("Test")
 
+    return greet
+
+
+@pytest.fixture
+async def invalid(
+    service: Service, _invalid: Entrypoint[User, Greeting]
+) -> AsyncGenerator[Entrypoint[User, Greeting], None]:
     await service.start()
-    yield greet
+    yield _invalid
     await service.stop()

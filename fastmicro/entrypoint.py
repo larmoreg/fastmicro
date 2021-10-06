@@ -6,9 +6,10 @@ from uuid import uuid4
 
 from fastmicro.env import (
     BATCH_SIZE,
-    CALL_TIMEOUT,
+    CLIENT_TIMEOUT,
     MESSAGING_TIMEOUT,
-    PROCESSING_TIMEOUT,
+    SERVER_TIMEOUT,
+    RAISES,
     RESENDS,
     RETRIES,
     SLEEP_TIME,
@@ -63,11 +64,12 @@ class Entrypoint(Generic[AT, BT]):
         self,
         batch_size: int = BATCH_SIZE,
         messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
-        processing_timeout: Optional[float] = PROCESSING_TIMEOUT,
+        processing_timeout: Optional[float] = SERVER_TIMEOUT,
         retries: int = RETRIES,
         sleep_time: float = SLEEP_TIME,
         resends: int = RESENDS,
-    ) -> bool:
+        raises: bool = RAISES,
+    ) -> None:
         if batch_size:
             async with self.topic.receive_batch(
                 self.name if not self.broadcast else self.broadcast_name,
@@ -93,13 +95,21 @@ class Entrypoint(Generic[AT, BT]):
                                 self.callback(cast(AT, input_header.message))
                                 for input_header in input_headers
                             ]
-                            output_messages = await asyncio.wait_for(
-                                asyncio.gather(*tasks), timeout=processing_timeout
-                            )
+
+                            try:
+                                output_messages = await asyncio.wait_for(
+                                    asyncio.gather(*tasks), timeout=processing_timeout
+                                )
+                            except asyncio.TimeoutError:
+                                raise asyncio.TimeoutError(
+                                    f"Timed out after {processing_timeout} sec"
+                                )
+
                             for (output_header, output_message) in zip(
                                 output_headers, output_messages
                             ):
                                 output_header.message = output_message
+                            break
                         except asyncio.CancelledError as e:
                             raise e
                         except Exception as e:
@@ -113,25 +123,22 @@ class Entrypoint(Generic[AT, BT]):
                                     await asyncio.sleep(sleep_time)
                                     logger.debug(f"Sleeping for {sleep_time} sec")
                                 continue
+                            elif resends < 0 or input_headers[0].resends < resends:
+                                for input_header in input_headers:
+                                    input_header.resends += 1
+                                temp = f"{input_headers[0].resends}"
+                                if resends > 0:
+                                    temp += f" / {resends}"
+                                logger.exception(f"Processing failed; resend {temp}")
+                                await self.topic.send_batch(input_headers)
+                            elif raises:
+                                raise e
                             else:
-                                if resends < 0 or input_headers[0].resends < resends:
-                                    for input_header in input_headers:
-                                        input_header.resends += 1
-                                    temp = f"{input_headers[0].resends}"
-                                    if resends > 0:
-                                        temp += f" / {resends}"
-                                    logger.exception(
-                                        f"Processing failed; resend {temp}"
-                                    )
-                                    await self.topic.send_batch(input_headers)
-                                    return False
-                                else:
-                                    logger.exception("Processing failed; skipping")
-                                    for output_header in output_headers:
-                                        output_header.error = str(e)
-                                    await self.reply_topic.send_batch(output_headers)
-                                    return False
-                        break
+                                logger.exception("Processing failed; skipping")
+                                for output_header in output_headers:
+                                    output_header.error = str(e)
+                                await self.reply_topic.send_batch(output_headers)
+                            return
 
                     if logger.isEnabledFor(logging.DEBUG):
                         for output_header in output_headers:
@@ -151,10 +158,17 @@ class Entrypoint(Generic[AT, BT]):
                         output_header = self.reply_topic.header_type(
                             correlation_id=input_header.correlation_id,
                         )
-                        output_message = await asyncio.wait_for(
-                            self.callback(cast(AT, input_header.message)),
-                            timeout=processing_timeout,
-                        )
+
+                        try:
+                            output_message = await asyncio.wait_for(
+                                self.callback(cast(AT, input_header.message)),
+                                timeout=processing_timeout,
+                            )
+                        except asyncio.TimeoutError:
+                            raise asyncio.TimeoutError(
+                                f"Timed out after {processing_timeout} sec"
+                            )
+
                         output_header.message = output_message
                         break
                     except asyncio.CancelledError as e:
@@ -170,25 +184,23 @@ class Entrypoint(Generic[AT, BT]):
                                 await asyncio.sleep(sleep_time)
                                 logger.debug(f"Sleeping for {sleep_time} sec")
                             continue
+                        elif resends < 0 or input_header.resends < resends:
+                            input_header.resends += 1
+                            temp = f"{input_header.resends}"
+                            if resends > 0:
+                                temp += f" / {resends}"
+                            logger.exception(f"Processing failed; resend {temp}")
+                            await self.topic.send(input_header)
+                        elif raises:
+                            raise e
                         else:
-                            if resends < 0 or input_header.resends < resends:
-                                input_header.resends += 1
-                                temp = f"{input_header.resends}"
-                                if resends > 0:
-                                    temp += f" / {resends}"
-                                logger.exception(f"Processing failed; resend {temp}")
-                                await self.topic.send(input_header)
-                                return False
-                            else:
-                                logger.exception("Processing failed; skipping")
-                                output_header.error = str(e)
-                                await self.reply_topic.send(output_header)
-                                return False
+                            logger.exception("Processing failed; skipping")
+                            output_header.error = str(e)
+                            await self.reply_topic.send(output_header)
+                        return
 
                 logger.debug(f"Result: {output_header.message}")
                 await self.reply_topic.send(output_header)
-
-        return True
 
     async def process_loop(self) -> None:
         while True:
@@ -201,7 +213,7 @@ class Entrypoint(Generic[AT, BT]):
     async def call(
         self,
         input_message: AT,
-        timeout: Optional[float] = CALL_TIMEOUT,
+        timeout: Optional[float] = CLIENT_TIMEOUT,
     ) -> BT:
         input_header = self.topic.header_type(
             correlation_id=uuid4(), message=input_message
@@ -231,7 +243,7 @@ class Entrypoint(Generic[AT, BT]):
         self,
         input_messages: List[AT],
         batch_size: int = BATCH_SIZE,
-        timeout: Optional[float] = CALL_TIMEOUT,
+        timeout: Optional[float] = CLIENT_TIMEOUT,
     ) -> List[BT]:
         input_headers = [
             self.topic.header_type(correlation_id=uuid4(), message=input_message)

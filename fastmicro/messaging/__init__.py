@@ -63,6 +63,7 @@ class TopicABC(abc.ABC, Generic[T]):
     def header_type(self) -> Type[HeaderABC[T]]:
         raise NotImplementedError
 
+    @abc.abstractmethod
     def __init__(
         self,
         name: str,
@@ -70,10 +71,7 @@ class TopicABC(abc.ABC, Generic[T]):
         schema_type: Type[T],
         serializer_type: Type[SerializerABC] = Serializer,
     ):
-        self.name = name
-        self.messaging = messaging
-        self.schema_type = schema_type
-        self.serializer_type = serializer_type
+        raise NotImplementedError
 
     @abc.abstractmethod
     async def serialize(self, header: HeaderABC[T]) -> bytes:

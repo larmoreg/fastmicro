@@ -98,7 +98,13 @@ class Topic(TopicABC[T], Generic[T]):
     async def _raw_receive(
         self, queue: Queue[bytes], timeout: Optional[float] = MESSAGING_TIMEOUT
     ) -> Header[T]:
-        message_id, serialized = await asyncio.wait_for(queue.get(), timeout=timeout)
+        try:
+            message_id, serialized = await asyncio.wait_for(
+                queue.get(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
+
         header = await self.deserialize(serialized)
         header.message_id = message_id
         return header
@@ -112,7 +118,7 @@ class Topic(TopicABC[T], Generic[T]):
         timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[Sequence[Header[T]]]:
         queue = await self.messaging._get_queue(self.name)
-        tasks = [self._raw_receive(queue) for i in range(batch_size)]
+        tasks = [self._raw_receive(queue, timeout) for i in range(batch_size)]
         yield await asyncio.gather(*tasks)
 
     async def _ack(self, group_name: str, header: HeaderABC[T]) -> None:

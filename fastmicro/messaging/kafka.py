@@ -138,7 +138,12 @@ class Topic(TopicABC[T], Generic[T]):
         timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[HeaderABC[T]]:
         consumer = await self.messaging._get_consumer(self.name, group_name)
-        message = await asyncio.wait_for(consumer.getone(), timeout=timeout)
+
+        try:
+            message = await asyncio.wait_for(consumer.getone(), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
+
         await self.messaging.lock.acquire()
         yield await self._raw_receive(message)
         self.messaging.lock.release()
@@ -156,6 +161,8 @@ class Topic(TopicABC[T], Generic[T]):
             timeout_ms=int(timeout * 1000) if timeout is not None else sys.maxsize,
             max_records=batch_size,
         )
+        if not temp.items():
+            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
 
         await self.messaging.lock.acquire()
         tasks = [
@@ -163,9 +170,6 @@ class Topic(TopicABC[T], Generic[T]):
             for _, messages in temp.items()
             for message in messages
         ]
-        if not tasks:
-            raise asyncio.TimeoutError
-
         yield await asyncio.gather(*tasks)
         self.messaging.lock.release()
 

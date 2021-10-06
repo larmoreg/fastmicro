@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import pytest
 
@@ -7,27 +8,27 @@ from .conftest import User, Greeting
 
 
 @pytest.mark.asyncio
-async def test_entrypoint_await(_entrypoint: Entrypoint[User, Greeting]) -> None:
+async def test_await(_entrypoint: Entrypoint[User, Greeting]) -> None:
     input_message = User(name="Greg")
 
     output_message = await _entrypoint(input_message)
 
-    assert output_message.name == "Greg"
-    assert output_message.greeting == "Hello, Greg!"
+    assert output_message.name == input_message.name
+    assert output_message.greeting == f"Hello, {input_message.name}!"
 
 
 @pytest.mark.asyncio
-async def test_entrypoint_call(entrypoint: Entrypoint[User, Greeting]) -> None:
+async def test_call(entrypoint: Entrypoint[User, Greeting]) -> None:
     input_message = User(name="Greg")
 
     output_message = await entrypoint.call(input_message)
 
-    assert output_message.name == "Greg"
-    assert output_message.greeting == "Hello, Greg!"
+    assert output_message.name == input_message.name
+    assert output_message.greeting == f"Hello, {input_message.name}!"
 
 
 @pytest.mark.asyncio
-async def test_entrypoint_call_batch(entrypoint: Entrypoint[User, Greeting]) -> None:
+async def test_call_batch(entrypoint: Entrypoint[User, Greeting]) -> None:
     input_messages = [User(name="Cara"), User(name="Greg")]
 
     output_messages = await entrypoint.call_batch(input_messages, batch_size=2)
@@ -41,7 +42,31 @@ async def test_entrypoint_call_batch(entrypoint: Entrypoint[User, Greeting]) -> 
 
 
 @pytest.mark.asyncio
-async def test_entrypoint_exception(
+async def test_timeout(
+    entrypoint: Entrypoint[User, Greeting], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
+
+    input_message = User(name="Greg", delay=1)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await entrypoint.call(input_message, timeout=0.1)
+
+
+@pytest.mark.asyncio
+async def test_timeout_batch(
+    entrypoint: Entrypoint[User, Greeting], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
+
+    input_messages = [User(name="Cara"), User(name="Greg", delay=1)]
+
+    with pytest.raises(asyncio.TimeoutError):
+        await entrypoint.call_batch(input_messages, batch_size=2, timeout=0.1)
+
+
+@pytest.mark.asyncio
+async def test_exception(
     invalid: Entrypoint[User, Greeting], caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
@@ -55,7 +80,7 @@ async def test_entrypoint_exception(
 
 
 @pytest.mark.asyncio
-async def test_entrypoint_exception_batch(
+async def test_exception_batch(
     invalid: Entrypoint[User, Greeting], caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")

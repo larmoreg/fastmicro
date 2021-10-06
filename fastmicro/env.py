@@ -1,19 +1,18 @@
 import os
 
 BATCH_SIZE = int(os.getenv("BATCH_SIZE", "0"))
-CALL_TIMEOUT = (
-    float(os.environ["CALL_TIMEOUT"]) if "CALL_TIMEOUT" in os.environ else None
+CLIENT_TIMEOUT = (
+    float(os.environ["CLIENT_TIMEOUT"]) if "CLIENT_TIMEOUT" in os.environ else None
 )
 MESSAGING_TIMEOUT = (
     float(os.environ["MESSAGING_TIMEOUT"])
     if "MESSAGING_TIMEOUT" in os.environ
     else None
 )
-PROCESSING_TIMEOUT = (
-    float(os.environ["PROCESSING_TIMEOUT"])
-    if "PROCESSING_TIMEOUT" in os.environ
-    else None
+SERVER_TIMEOUT = (
+    float(os.environ["SERVER_TIMEOUT"]) if "SERVER_TIMEOUT" in os.environ else None
 )
+RAISES = "RAISES" in os.environ
 RESENDS = int(os.getenv("RESENDS", "0"))
 RETRIES = int(os.getenv("RETRIES", "0"))
 SLEEP_TIME = float(os.getenv("SLEEP_TIME", "0"))

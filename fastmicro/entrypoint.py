@@ -1,7 +1,15 @@
 import asyncio
 import logging
-from pydantic import BaseModel
-from typing import Awaitable, Callable, cast, Generic, List, Optional, TypeVar
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    cast,
+    Generic,
+    List,
+    Optional,
+    TypeVar,
+)
 from uuid import uuid4
 
 from fastmicro.env import (
@@ -18,8 +26,8 @@ from fastmicro.messaging import HeaderABC, TopicABC
 
 logger = logging.getLogger(__name__)
 
-AT = TypeVar("AT", bound=BaseModel)
-BT = TypeVar("BT", bound=BaseModel)
+AT = TypeVar("AT", bound=Any)
+BT = TypeVar("BT", bound=Any)
 
 
 class Entrypoint(Generic[AT, BT]):

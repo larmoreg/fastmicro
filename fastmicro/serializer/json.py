@@ -1,5 +1,7 @@
+from functools import partial
 import json
-from pydantic.json import pydantic_encoder
+from pydantic import BaseModel
+from pydantic.json import custom_pydantic_encoder, pydantic_encoder
 from typing import Any, cast, Dict
 
 from fastmicro.serializer import SerializerABC
@@ -7,8 +9,12 @@ from fastmicro.serializer import SerializerABC
 
 class Serializer(SerializerABC):
     @staticmethod
-    async def serialize(data: Dict[Any, Any]) -> bytes:
-        return json.dumps(data, default=pydantic_encoder).encode()
+    async def serialize(data: BaseModel) -> bytes:
+        if data.__config__.json_encoders:
+            encoder = partial(custom_pydantic_encoder, data.__config__.json_encoders)
+            return json.dumps(data.dict(), default=encoder).encode()
+        else:
+            return json.dumps(data.dict(), default=pydantic_encoder).encode()
 
     @staticmethod
     async def deserialize(data: bytes) -> Dict[Any, Any]:

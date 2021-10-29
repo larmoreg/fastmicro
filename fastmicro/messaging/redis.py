@@ -84,7 +84,7 @@ class Topic(TopicABC[T], Generic[T]):
         self.serializer_type = serializer_type
 
     async def serialize(self, header: HeaderABC[T]) -> bytes:
-        return await self.serializer_type.serialize(header.dict())
+        return await self.serializer_type.serialize(header)
 
     async def deserialize(self, serialized: bytes) -> Header[T]:
         data = await self.serializer_type.deserialize(serialized)

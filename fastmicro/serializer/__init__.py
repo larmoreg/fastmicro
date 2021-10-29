@@ -1,11 +1,12 @@
 import abc
+from pydantic import BaseModel
 from typing import Any, Dict
 
 
 class SerializerABC(abc.ABC):
     @staticmethod
     @abc.abstractmethod
-    async def serialize(data: Dict[Any, Any]) -> bytes:
+    async def serialize(data: BaseModel) -> bytes:
         raise NotImplementedError
 
     @staticmethod

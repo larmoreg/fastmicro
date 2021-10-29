@@ -36,8 +36,7 @@ async def test_serializer_performance(serializer_type: Type[SerializerABC]) -> N
     ]
 
     serialize_tasks = [
-        serializer_type.serialize(input_message.dict())
-        for input_message in input_messages
+        serializer_type.serialize(input_message) for input_message in input_messages
     ]
     start = timer()
     serialized_messages = await asyncio.gather(*serialize_tasks)

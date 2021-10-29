@@ -10,7 +10,16 @@ from fastmicro.serializer import SerializerABC
 class Serializer(SerializerABC):
     @staticmethod
     async def serialize(data: BaseModel) -> bytes:
-        if data.__config__.json_encoders:
+        if (
+            hasattr(data, "message")
+            and isinstance(data.message, BaseModel)
+            and data.message.__config__.json_encoders
+        ):
+            encoder = partial(
+                custom_pydantic_encoder, data.message.__config__.json_encoders
+            )
+            return json.dumps(data.dict(), default=encoder).encode()
+        elif data.__config__.json_encoders:
             encoder = partial(custom_pydantic_encoder, data.__config__.json_encoders)
             return json.dumps(data.dict(), default=encoder).encode()
         else:

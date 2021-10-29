@@ -2,10 +2,10 @@ import abc
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-from pydantic import BaseModel
 from pydantic.generics import GenericModel
 from types import TracebackType
 from typing import (
+    Any,
     AsyncIterator,
     Generic,
     Optional,
@@ -24,7 +24,7 @@ from fastmicro.serializer.json import Serializer
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T", bound=BaseModel)
+T = TypeVar("T", bound=Any)
 
 
 class HeaderABC(GenericModel, Generic[T]):

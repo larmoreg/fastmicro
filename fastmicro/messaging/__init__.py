@@ -2,36 +2,24 @@ import abc
 import asyncio
 from contextlib import asynccontextmanager
 import logging
-from pydantic.generics import GenericModel
 from types import TracebackType
 from typing import (
-    Any,
     AsyncIterator,
     Generic,
     Optional,
     Sequence,
     Type,
-    TypeVar,
 )
-from uuid import UUID
 
 from fastmicro.env import (
     BATCH_SIZE,
     MESSAGING_TIMEOUT,
 )
+from fastmicro.messaging.header import T, HeaderABC
 from fastmicro.serializer import SerializerABC
 from fastmicro.serializer.json import Serializer
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T", bound=Any)
-
-
-class HeaderABC(GenericModel, Generic[T]):
-    correlation_id: Optional[UUID] = None
-    resends: int = 0
-    message: Optional[T] = None
-    error: Optional[str] = None
 
 
 class MessagingABC(abc.ABC):

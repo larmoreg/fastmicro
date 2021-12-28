@@ -18,7 +18,8 @@ from fastmicro.env import (
     MESSAGING_TIMEOUT,
     REDIS_ADDRESS,
 )
-from fastmicro.messaging import T, HeaderABC, MessagingABC, TopicABC
+from fastmicro.messaging import MessagingABC, TopicABC
+from fastmicro.messaging.header import T, HeaderABC
 from fastmicro.serializer import SerializerABC
 from fastmicro.serializer.json import Serializer
 

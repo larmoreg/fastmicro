@@ -13,7 +13,9 @@ from typing import (
 )
 
 from fastmicro.env import BATCH_SIZE, MESSAGING_TIMEOUT
-from fastmicro.messaging import T, HeaderABC, MessagingABC, TopicABC
+from fastmicro.messaging import MessagingABC
+from fastmicro.messaging import TopicABC
+from fastmicro.messaging.header import T, HeaderABC
 from fastmicro.serializer import SerializerABC
 from fastmicro.serializer.json import Serializer
 

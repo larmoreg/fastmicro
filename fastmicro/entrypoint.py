@@ -22,7 +22,8 @@ from fastmicro.env import (
     RETRIES,
     SLEEP_TIME,
 )
-from fastmicro.messaging import HeaderABC, TopicABC
+from fastmicro.messaging import TopicABC
+from fastmicro.messaging.header import HeaderABC
 
 logger = logging.getLogger(__name__)
 

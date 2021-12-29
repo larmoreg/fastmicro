@@ -1,7 +1,5 @@
 import asyncio
-from contextlib import asynccontextmanager
 from typing import (
-    AsyncIterator,
     cast,
     Dict,
     Generic,
@@ -14,7 +12,6 @@ from typing import (
 
 from fastmicro.env import BATCH_SIZE, MESSAGING_TIMEOUT
 from fastmicro.messaging import MessagingABC
-from fastmicro.messaging import TopicABC
 from fastmicro.messaging.header import T, HeaderABC
 from fastmicro.serializer import SerializerABC
 from fastmicro.serializer.json import Serializer
@@ -60,81 +57,71 @@ class Header(HeaderABC[T], Generic[T]):
 
 
 class Messaging(MessagingABC):
+    def header_type(self, schema_type: Type[T]) -> Type[Header[T]]:
+        return Header[schema_type]  # type: ignore
+
     def __init__(
         self,
+        serializer_type: Type[SerializerABC] = Serializer,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
+        super().__init__(serializer_type, loop)
         self.queues: Dict[str, Queue[bytes]] = dict()
-        super().__init__(loop)
 
     async def _get_queue(self, topic_name: str) -> Queue[bytes]:
         if topic_name not in self.queues:
             self.queues[topic_name] = Queue(self.loop)
         return self.queues[topic_name]
 
+    async def ack(
+        self, topic_name: str, group_name: str, headers: Sequence[HeaderABC[T]]
+    ) -> None:
+        headers = cast(Sequence[Header[T]], headers)
+        queue = await self._get_queue(topic_name)
+        tasks = [queue.ack(cast(bytes, header.message_id)) for header in headers]
+        await asyncio.gather(*tasks)
 
-class Topic(TopicABC[T], Generic[T]):
-    @property
-    def header_type(self) -> Type[Header[T]]:
-        return Header[self.schema_type]  # type: ignore
+    async def nack(
+        self, topic_name: str, group_name: str, headers: Sequence[HeaderABC[T]]
+    ) -> None:
+        headers = cast(Sequence[Header[T]], headers)
+        queue = await self._get_queue(topic_name)
+        tasks = [queue.nack(cast(bytes, header.message_id)) for header in headers]
+        await asyncio.gather(*tasks)
 
-    def __init__(
-        self,
-        name: str,
-        messaging: Messaging,
-        schema_type: Type[T],
-        serializer_type: Type[SerializerABC] = Serializer,
-    ):
-        self.name = name
-        self.messaging: Messaging = messaging
-        self.schema_type = schema_type
-        self.serializer_type = serializer_type
-
-    async def serialize(self, header: HeaderABC[T]) -> bytes:
-        return await self.serializer_type.serialize(header)
-
-    async def deserialize(self, serialized: bytes) -> Header[T]:
-        data = await self.serializer_type.deserialize(serialized)
-        return self.header_type(**data)
-
-    async def _raw_receive(
-        self, queue: Queue[bytes], timeout: Optional[float] = MESSAGING_TIMEOUT
-    ) -> Header[T]:
-        try:
-            message_id, serialized = await asyncio.wait_for(
-                queue.get(), timeout=timeout
-            )
-        except asyncio.TimeoutError:
-            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
-
-        header = await self.deserialize(serialized)
+    async def _receive(self, queue: Queue[bytes], schema_type: Type[T]) -> Header[T]:
+        message_id, serialized = await queue.get()
+        header = cast(Header[T], await self.deserialize(serialized, schema_type))
         header.message_id = message_id
         return header
 
-    @asynccontextmanager
-    async def _receive_batch(
+    async def receive(
         self,
+        topic_name: str,
         group_name: str,
         consumer_name: str,
+        schema_type: Type[T],
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> AsyncIterator[Sequence[Header[T]]]:
-        queue = await self.messaging._get_queue(self.name)
-        tasks = [self._raw_receive(queue, timeout) for i in range(batch_size)]
-        yield await asyncio.gather(*tasks)
+    ) -> Sequence[Header[T]]:
+        queue = await self._get_queue(topic_name)
+        tasks = [self._receive(queue, schema_type) for i in range(batch_size)]
+        try:
+            headers = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
+        except asyncio.TimeoutError:
+            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
+        return cast(Sequence[Header[T]], headers)
 
-    async def _ack(self, group_name: str, header: HeaderABC[T]) -> None:
-        header = cast(Header[T], header)
-        queue = await self.messaging._get_queue(self.name)
-        await queue.ack(cast(bytes, header.message_id))
-
-    async def _nack(self, group_name: str, header: HeaderABC[T]) -> None:
-        header = cast(Header[T], header)
-        queue = await self.messaging._get_queue(self.name)
-        await queue.nack(cast(bytes, header.message_id))
-
-    async def _send(self, header: HeaderABC[T]) -> None:
-        header = cast(Header[T], header)
-        queue = await self.messaging._get_queue(self.name)
+    async def _send(self, queue: Queue[bytes], header: Header[T]) -> None:
         serialized = await self.serialize(header)
         await queue.put(serialized)
+
+    async def send(
+        self,
+        topic_name: str,
+        headers: Sequence[HeaderABC[T]],
+    ) -> None:
+        headers = cast(Sequence[Header[T]], headers)
+        queue = await self._get_queue(topic_name)
+        tasks = [self._send(queue, header) for header in headers]
+        await asyncio.gather(*tasks)

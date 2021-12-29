@@ -8,7 +8,8 @@ from typing import Type
 from uuid import UUID, uuid4
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import MessagingABC, TopicABC
+from fastmicro.messaging import MessagingABC
+from fastmicro.messaging.topic import Topic
 from fastmicro.serializer import SerializerABC
 
 from .conftest import User, Greeting
@@ -67,12 +68,10 @@ async def test_serializer_performance(serializer_type: Type[SerializerABC]) -> N
 async def test_call_performance(entrypoint: Entrypoint[User, Greeting]) -> None:
     input_messages = [User(name=f"{i}") for i in range(1000)]
 
-    output_message = await entrypoint.call(
-        input_messages[0],
-    )
+    await entrypoint.call(input_messages[0])
 
     start = timer()
-    output_messages = await entrypoint.call_batch(
+    output_messages = await entrypoint.call(
         input_messages,
         batch_size=100,
     )
@@ -93,8 +92,8 @@ async def test_call_performance(entrypoint: Entrypoint[User, Greeting]) -> None:
 @pytest.mark.asyncio
 async def test_process_performance(
     messaging: MessagingABC,
-    user_topic: TopicABC[User],
-    greeting_topic: TopicABC[Greeting],
+    user_topic: Topic[User],
+    greeting_topic: Topic[Greeting],
     _entrypoint: Entrypoint[User, Greeting],
 ) -> None:
     input_messages = [User(name="Cara"), User(name="Greg")]
@@ -107,7 +106,7 @@ async def test_process_performance(
     async with messaging:
         await user_topic.subscribe(_entrypoint.name)
         await greeting_topic.subscribe("test")
-        await user_topic.send_batch(input_headers)
+        await user_topic.send(input_headers)
 
         start = timer()
         await _entrypoint.process(batch_size=2)
@@ -120,7 +119,7 @@ async def test_process_performance(
         correlation_ids = set(
             input_header.correlation_id for input_header in input_headers
         )
-        async with _entrypoint.reply_topic.receive_batch(
+        async with _entrypoint.reply_topic.receive(
             "test", "test", batch_size=2
         ) as output_headers:
             for output_header in output_headers:

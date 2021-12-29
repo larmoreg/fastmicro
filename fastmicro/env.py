@@ -1,6 +1,6 @@
 import os
 
-BATCH_SIZE = int(os.getenv("BATCH_SIZE", "0"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "1"))
 CLIENT_TIMEOUT = (
     float(os.environ["CLIENT_TIMEOUT"]) if "CLIENT_TIMEOUT" in os.environ else None
 )

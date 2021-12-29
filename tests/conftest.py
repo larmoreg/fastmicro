@@ -10,7 +10,8 @@ import pytest
 from typing import AsyncGenerator, cast, Optional, Type
 
 from fastmicro.entrypoint import Entrypoint
-from fastmicro.messaging import MessagingABC, TopicABC
+from fastmicro.messaging import MessagingABC
+from fastmicro.messaging.topic import Topic
 from fastmicro.serializer import SerializerABC
 from fastmicro.service import Service
 
@@ -150,7 +151,7 @@ def service(
 ) -> Service:
     caplog.set_level(logging.CRITICAL, logger="aiokafka.consumer.group_coordinator")
 
-    return Service("test", messaging, loop=event_loop)
+    return Service("test", loop=event_loop)
 
 
 class User(BaseModel):
@@ -167,25 +168,23 @@ class Greeting(BaseModel):
 def user_topic(
     backend: str,
     messaging: MessagingABC,
-) -> TopicABC[User]:
-    topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
-    return topic_type("user", messaging, User)  # type: ignore
+) -> Topic[User]:
+    return Topic(messaging, "user", User)
 
 
 @pytest.fixture
 def greeting_topic(
     backend: str,
     messaging: MessagingABC,
-) -> TopicABC[Greeting]:
-    topic_type = __import__(backend, fromlist=("Topic",)).Topic  # type: ignore
-    return topic_type("greeting", messaging, Greeting)  # type: ignore
+) -> Topic[Greeting]:
+    return Topic(messaging, "greeting", Greeting)
 
 
 @pytest.fixture
 def _entrypoint(
     service: Service,
-    user_topic: TopicABC[User],
-    greeting_topic: TopicABC[Greeting],
+    user_topic: Topic[User],
+    greeting_topic: Topic[Greeting],
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:
@@ -208,8 +207,8 @@ async def entrypoint(
 @pytest.fixture
 def _invalid(
     service: Service,
-    user_topic: TopicABC[User],
-    greeting_topic: TopicABC[Greeting],
+    user_topic: Topic[User],
+    greeting_topic: Topic[Greeting],
 ) -> Entrypoint[User, Greeting]:
     @service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:

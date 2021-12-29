@@ -20,10 +20,9 @@ QT = TypeVar("QT")
 
 
 class Queue(Generic[QT]):
-    def __init__(self, loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()):
-        self.loop = loop
-        self.nacked: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=self.loop)
-        self.queue: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue(loop=self.loop)
+    def __init__(self):
+        self.nacked: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue()
+        self.queue: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue()
         self.pending: Dict[bytes, QT] = dict()
         self.index: int = 0
 
@@ -70,7 +69,7 @@ class Messaging(MessagingABC):
 
     async def _get_queue(self, topic_name: str) -> Queue[bytes]:
         if topic_name not in self.queues:
-            self.queues[topic_name] = Queue(self.loop)
+            self.queues[topic_name] = Queue()
         return self.queues[topic_name]
 
     async def ack(

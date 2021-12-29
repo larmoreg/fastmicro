@@ -1,12 +1,14 @@
 import abc
 from pydantic import BaseModel
-from typing import Any, Dict
+from typing import Any, Dict, Union
+
+from fastmicro.messaging.header import T, HeaderABC
 
 
 class SerializerABC(abc.ABC):
     @staticmethod
     @abc.abstractmethod
-    async def serialize(data: BaseModel) -> bytes:
+    async def serialize(data: Union[BaseModel, HeaderABC[T]]) -> bytes:
         raise NotImplementedError
 
     @staticmethod

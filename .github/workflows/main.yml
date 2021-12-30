@@ -31,7 +31,7 @@ jobs:
       - name: Install
         run: poetry install -E kafka -E msgpack -E redis
       - name: Pytest
-        run: poetry run pytest --cov-report=xml --cov=fastmicro tests/
+        run: poetry run pytest -x -s --cov-report=xml --cov=fastmicro tests/test_client.py tests/test_server.py
       - name: Codecov
         uses: codecov/codecov-action@v2.0.1
         with:

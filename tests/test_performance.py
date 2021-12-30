@@ -105,7 +105,7 @@ async def test_process_performance(
 
     async with messaging:
         await user_topic.subscribe(_entrypoint.name)
-        await greeting_topic.subscribe("test")
+        await greeting_topic.subscribe("test", latest=True)
         await user_topic.send(input_headers)
 
         start = timer()

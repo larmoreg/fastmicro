@@ -1,7 +1,9 @@
 import aioredis
 import asyncio
+from contextlib import asynccontextmanager
 import sys
 from typing import (
+    AsyncIterator,
     cast,
     Dict,
     Generic,
@@ -52,13 +54,11 @@ class Messaging(MessagingABC):
             return True
         return False
 
-    async def _create_group(self, topic_name: str, group_name: str) -> None:
+    async def _create_group(self, topic_name: str, group_name: str, id: str) -> None:
         if not await self._topic_exists(topic_name) or not await self._group_exists(
             topic_name, group_name
         ):
-            await self.redis.xgroup_create(
-                topic_name, group_name, id="$", mkstream=True
-            )
+            await self.redis.xgroup_create(topic_name, group_name, id=id, mkstream=True)
 
     async def connect(self) -> None:
         if not self.initialized:
@@ -68,8 +68,10 @@ class Messaging(MessagingABC):
         if self.initialized:
             await self.redis.close()
 
-    async def subscribe(self, topic_name: str, group_name: str) -> None:
-        await self._create_group(topic_name, group_name)
+    async def subscribe(
+        self, topic_name: str, group_name: str, latest: bool = False
+    ) -> None:
+        await self._create_group(topic_name, group_name, "$" if latest else "0")
 
     async def ack(
         self, topic_name: str, group_name: str, headers: Sequence[HeaderABC[T]]
@@ -92,6 +94,7 @@ class Messaging(MessagingABC):
         header.message_id = message_id
         return header
 
+    @asynccontextmanager
     async def receive(
         self,
         topic_name: str,
@@ -100,7 +103,7 @@ class Messaging(MessagingABC):
         schema_type: Type[T],
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Sequence[Header[T]]:
+    ) -> AsyncIterator[Sequence[Header[T]]]:
         temp = await self.redis.xreadgroup(
             group_name,
             consumer_name,
@@ -120,7 +123,7 @@ class Messaging(MessagingABC):
             for message_id, message in temp[0][1]
         ]
         headers = await asyncio.gather(*tasks)
-        return cast(Sequence[Header[T]], headers)
+        yield cast(Sequence[Header[T]], headers)
 
     async def _send(self, topic_name: str, header: Header[T]) -> None:
         serialized = await self.serialize(header)

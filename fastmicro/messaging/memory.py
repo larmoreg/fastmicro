@@ -1,5 +1,7 @@
 import asyncio
+from contextlib import asynccontextmanager
 from typing import (
+    AsyncIterator,
     cast,
     Dict,
     Generic,
@@ -20,7 +22,7 @@ QT = TypeVar("QT")
 
 
 class Queue(Generic[QT]):
-    def __init__(self):
+    def __init__(self) -> None:
         self.nacked: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue()
         self.queue: asyncio.Queue[Tuple[bytes, QT]] = asyncio.Queue()
         self.pending: Dict[bytes, QT] = dict()
@@ -94,6 +96,7 @@ class Messaging(MessagingABC):
         header.message_id = message_id
         return header
 
+    @asynccontextmanager
     async def receive(
         self,
         topic_name: str,
@@ -102,14 +105,14 @@ class Messaging(MessagingABC):
         schema_type: Type[T],
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Sequence[Header[T]]:
+    ) -> AsyncIterator[Sequence[Header[T]]]:
         queue = await self._get_queue(topic_name)
         tasks = [self._receive(queue, schema_type) for i in range(batch_size)]
         try:
             headers = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
         except asyncio.TimeoutError:
             raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
-        return cast(Sequence[Header[T]], headers)
+        yield cast(Sequence[Header[T]], headers)
 
     async def _send(self, queue: Queue[bytes], header: Header[T]) -> None:
         serialized = await self.serialize(header)

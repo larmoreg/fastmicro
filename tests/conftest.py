@@ -40,11 +40,12 @@ def backend(request) -> str:  # type: ignore
 
 @pytest.fixture(scope="session")
 async def docker(backend: str) -> Optional[AsyncGenerator[Container, None]]:
-    _docker = libdocker.from_env()
+    client = libdocker.from_env()
 
     if backend == "fastmicro.messaging.kafka":
-        kafka = _docker.containers.run(
-            image="aiolibs/kafka:2.12_2.4.0",
+        client.images.pull("aiolibs/kafka:2.13_2.8.1")
+        kafka = client.containers.run(
+            image="aiolibs/kafka:2.13_2.8.1",
             name="test-kafka",
             ports={9092: 9092},
             environment={
@@ -82,8 +83,9 @@ async def docker(backend: str) -> Optional[AsyncGenerator[Container, None]]:
 
         kafka.remove(force=True)
     elif backend == "fastmicro.messaging.redis":
-        redis = _docker.containers.run(
-            image="redis:6.2.5",
+        client.images.pull("redis:6.2.6")
+        redis = client.containers.run(
+            image="redis:6.2.6",
             name="test-redis",
             ports={6379: 6379},
             tty=True,
@@ -119,7 +121,7 @@ async def docker(backend: str) -> Optional[AsyncGenerator[Container, None]]:
     else:
         yield None
 
-    _docker.close()
+    client.close()
 
 
 @pytest.fixture(scope="session")
@@ -137,10 +139,8 @@ async def messaging(
     docker: Optional[Container],
     messaging_type: Type[MessagingABC],
     event_loop: asyncio.AbstractEventLoop,
-) -> AsyncGenerator[MessagingABC, None]:
-    messaging = messaging_type(loop=event_loop)
-    async with messaging:
-        yield messaging
+) -> MessagingABC:
+    return messaging_type(loop=event_loop)
 
 
 @pytest.fixture

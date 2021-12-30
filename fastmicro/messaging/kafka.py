@@ -1,7 +1,10 @@
 import aiokafka
 import asyncio
+from contextlib import asynccontextmanager
 import sys
 from typing import (
+    Any,
+    AsyncIterator,
     cast,
     Dict,
     Generic,
@@ -28,10 +31,7 @@ class Header(HeaderABC[T], Generic[T]):
     offset: Optional[int] = None
 
 
-class Messaging(MessagingABC):
-    def header_type(self, schema_type: Type[T]) -> Type[Header[T]]:
-        return Header[schema_type]  # type: ignore
-
+class Consumer(aiokafka.AIOKafkaConsumer):  # type: ignore
     class ConsumerRebalanceListener(aiokafka.ConsumerRebalanceListener):  # type: ignore
         def __init__(self, lock: asyncio.Lock):
             self.lock = lock
@@ -48,6 +48,31 @@ class Messaging(MessagingABC):
 
     def __init__(
         self,
+        *args: Any,
+        loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+
+        self.lock = asyncio.Lock(loop=loop)
+
+    def subscribe(
+        self,
+        *args: Any,
+        listener: Optional[aiokafka.ConsumerRebalanceListener] = None,
+        **kwargs: Any,
+    ) -> None:
+        if not listener:
+            listener = self.ConsumerRebalanceListener(self.lock)
+        super().subscribe(*args, listener=listener, **kwargs)
+
+
+class Messaging(MessagingABC):
+    def header_type(self, schema_type: Type[T]) -> Type[Header[T]]:
+        return Header[schema_type]  # type: ignore
+
+    def __init__(
+        self,
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
         serializer_type: Type[SerializerABC] = Serializer,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
@@ -56,28 +81,26 @@ class Messaging(MessagingABC):
         self.bootstrap_servers = bootstrap_servers
         self.initialized = False
 
-    async def _get_consumer(
-        self, topic_name: str, group_name: str
-    ) -> aiokafka.AIOKafkaConsumer:
+    async def _create_consumer(
+        self, topic_name: str, group_name: str, auto_offset_reset: str
+    ) -> None:
         key = topic_name, group_name
         if key not in self.consumers:
-            consumer = aiokafka.AIOKafkaConsumer(
+            consumer = Consumer(
                 bootstrap_servers=self.bootstrap_servers,
                 loop=self.loop,
                 group_id=group_name,
-                auto_offset_reset="latest",
+                auto_offset_reset=auto_offset_reset,
                 enable_auto_commit=False,
                 isolation_level="read_committed",
             )
-            consumer.subscribe([topic_name], listener=self.listener)
+            consumer.subscribe([topic_name])
             await consumer.start()
+
             self.consumers[key] = consumer
-        return self.consumers[key]
 
     async def connect(self) -> None:
         if not self.initialized:
-            self.lock = asyncio.Lock(loop=self.loop)
-            self.listener = self.ConsumerRebalanceListener(self.lock)
             self.consumers: Dict[Tuple[str, str], aiokafka.AIOKafkaConsumer] = dict()
 
             self.producer = aiokafka.AIOKafkaProducer(
@@ -95,8 +118,12 @@ class Messaging(MessagingABC):
             await self.producer.stop()
             self.initialized = False
 
-    async def subscribe(self, topic_name: str, group_name: str) -> None:
-        await self._get_consumer(topic_name, group_name)
+    async def subscribe(
+        self, topic_name: str, group_name: str, latest: bool = False
+    ) -> None:
+        await self._create_consumer(
+            topic_name, group_name, "latest" if latest else "earliest"
+        )
 
     async def ack(
         self, topic_name: str, group_name: str, headers: Sequence[HeaderABC[T]]
@@ -113,7 +140,8 @@ class Messaging(MessagingABC):
             for partition in partitions
         }
 
-        consumer = await self._get_consumer(topic_name, group_name)
+        key = topic_name, group_name
+        consumer = self.consumers[key]
         await consumer.commit(offsets)
 
     async def nack(
@@ -131,6 +159,7 @@ class Messaging(MessagingABC):
         header.offset = raw_message.offset
         return header
 
+    @asynccontextmanager
     async def receive(
         self,
         topic_name: str,
@@ -139,8 +168,9 @@ class Messaging(MessagingABC):
         schema_type: Type[T],
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Sequence[Header[T]]:
-        consumer = await self._get_consumer(topic_name, group_name)
+    ) -> AsyncIterator[Sequence[Header[T]]]:
+        key = topic_name, group_name
+        consumer = self.consumers[key]
         temp = await consumer.getmany(
             timeout_ms=int(timeout * 1000) if timeout is not None else sys.maxsize,
             max_records=batch_size,
@@ -148,15 +178,17 @@ class Messaging(MessagingABC):
         if not temp.items():
             raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
 
-        await self.lock.acquire()
+        await consumer.lock.acquire()
+
         tasks = [
             self._receive(message, schema_type)
             for _, messages in temp.items()
             for message in messages
         ]
         headers = await asyncio.gather(*tasks)
-        self.lock.release()
-        return cast(Sequence[Header[T]], headers)
+        yield cast(Sequence[Header[T]], headers)
+
+        consumer.lock.release()
 
     async def _send(
         self,
@@ -166,9 +198,7 @@ class Messaging(MessagingABC):
         serialized = await self.serialize(header)
         await self.producer.send_and_wait(topic_name, serialized)
 
-    async def send(
-        self, topic_name: str, headers: Sequence[HeaderABC[T]]
-    ) -> None:
+    async def send(self, topic_name: str, headers: Sequence[HeaderABC[T]]) -> None:
         headers = cast(Sequence[Header[T]], headers)
         tasks = [self._send(topic_name, header) for header in headers]
         await asyncio.gather(*tasks)

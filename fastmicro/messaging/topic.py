@@ -42,8 +42,8 @@ class Topic(Generic[T]):
     async def cleanup(self) -> None:
         await self.messaging.cleanup()
 
-    async def subscribe(self, group_name: str) -> None:
-        await self.messaging.subscribe(self.name, group_name)
+    async def subscribe(self, group_name: str, latest: bool = False) -> None:
+        await self.messaging.subscribe(self.name, group_name, latest)
 
     async def unsubscribe(self, group_name: str) -> None:
         await self.messaging.unsubscribe(self.name, group_name)
@@ -55,35 +55,36 @@ class Topic(Generic[T]):
         consumer_name: str,
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
+        latest: bool = False,
     ) -> AsyncIterator[Sequence[HeaderABC[T]]]:
-        await self.messaging.subscribe(self.name, group_name)
+        await self.subscribe(group_name, latest)
 
-        headers = await self.messaging.receive(
+        async with self.messaging.receive(
             self.name,
             group_name,
             consumer_name,
             self.schema_type,
             batch_size,
             timeout,
-        )
-        if logger.isEnabledFor(logging.DEBUG):
-            for header in headers:
-                logger.debug(f"Received {header}")
-
-        try:
-            yield headers
-
+        ) as headers:
             if logger.isEnabledFor(logging.DEBUG):
                 for header in headers:
-                    logger.debug(f"Acking {header}")
-            await self.messaging.ack(self.name, group_name, headers)
-        except Exception as e:
-            if headers:
+                    logger.debug(f"Received {header}")
+
+            try:
+                yield headers
+
                 if logger.isEnabledFor(logging.DEBUG):
                     for header in headers:
-                        logger.debug(f"Nacking {header}")
-                await self.messaging.nack(self.name, group_name, headers)
-            raise e
+                        logger.debug(f"Acking {header}")
+                await self.messaging.ack(self.name, group_name, headers)
+            except Exception as e:
+                if headers:
+                    if logger.isEnabledFor(logging.DEBUG):
+                        for header in headers:
+                            logger.debug(f"Nacking {header}")
+                    await self.messaging.nack(self.name, group_name, headers)
+                raise e
 
     async def send(
         self,

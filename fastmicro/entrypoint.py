@@ -178,7 +178,7 @@ class Entrypoint(Generic[AT, BT]):
             for input_message in input_messages
         ]
 
-        await self.reply_topic.subscribe(self.broadcast_name)
+        await self.reply_topic.subscribe(self.broadcast_name, latest=True)
 
         output_headers: List[HeaderABC[BT]] = list()
         for i in range(0, len(input_headers), batch_size):

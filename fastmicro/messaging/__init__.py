@@ -1,7 +1,9 @@
 import abc
 import asyncio
+from contextlib import asynccontextmanager
 from types import TracebackType
 from typing import (
+    AsyncIterator,
     Optional,
     Sequence,
     Type,
@@ -54,7 +56,9 @@ class MessagingABC(abc.ABC):
         data = await self.serializer_type.deserialize(serialized)
         return self.header_type(schema_type)(**data)
 
-    async def subscribe(self, topic_name: str, group_name: str) -> None:
+    async def subscribe(
+        self, topic_name: str, group_name: str, latest: bool = False
+    ) -> None:
         pass
 
     async def unsubscribe(self, topic_name: str, group_name: str) -> None:
@@ -72,6 +76,7 @@ class MessagingABC(abc.ABC):
     ) -> None:
         raise NotImplementedError
 
+    @asynccontextmanager
     @abc.abstractmethod
     async def receive(
         self,
@@ -81,8 +86,9 @@ class MessagingABC(abc.ABC):
         schema_type: Type[T],
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> Sequence[HeaderABC[T]]:
+    ) -> AsyncIterator[Sequence[HeaderABC[T]]]:
         raise NotImplementedError
+        yield
 
     @abc.abstractmethod
     async def send(

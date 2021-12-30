@@ -22,7 +22,7 @@ async def test_process(
 
     async with messaging:
         await user_topic.subscribe(_entrypoint.name)
-        await greeting_topic.subscribe("test")
+        await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         await _entrypoint.process()
@@ -56,7 +56,7 @@ async def test_timeout(
 
     async with messaging:
         await user_topic.subscribe(_entrypoint.name)
-        await greeting_topic.subscribe("test")
+        await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         await _entrypoint.process(processing_timeout=0.1)
@@ -85,7 +85,7 @@ async def test_exception(
 
     async with messaging:
         await user_topic.subscribe(_invalid.name)
-        await greeting_topic.subscribe("test")
+        await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         await _invalid.process()
@@ -114,7 +114,7 @@ async def test_retries(
 
     async with messaging:
         await user_topic.subscribe(_invalid.name)
-        await greeting_topic.subscribe("test")
+        await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         await _invalid.process(retries=1, sleep_time=0.1)
@@ -143,7 +143,7 @@ async def test_resends(
 
     async with messaging:
         await user_topic.subscribe(_invalid.name)
-        await greeting_topic.subscribe("test")
+        await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         for i in range(2):
@@ -173,7 +173,7 @@ async def test_raises(
 
     async with messaging:
         await user_topic.subscribe(_invalid.name)
-        await greeting_topic.subscribe("test")
+        await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         with pytest.raises(RuntimeError) as excinfo:

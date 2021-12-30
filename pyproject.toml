@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastmicro"
-version = "0.3.1"
+version = "0.3.2"
 description = "Fast, simple microservice framework"
 authors = ["larmoreg <larmoreg@gmail.com>"]
 license = "MIT License"

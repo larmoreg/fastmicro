@@ -144,8 +144,7 @@ async def messaging(
 
 
 @pytest.fixture
-def service(
-    messaging: MessagingABC,
+def _service(
     event_loop: asyncio.AbstractEventLoop,
     caplog: pytest.LogCaptureFixture,
 ) -> Service:
@@ -182,11 +181,11 @@ def greeting_topic(
 
 @pytest.fixture
 def _entrypoint(
-    service: Service,
+    _service: Service,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
 ) -> Entrypoint[User, Greeting]:
-    @service.entrypoint(user_topic, greeting_topic)
+    @_service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:
         if message.delay:
             await asyncio.sleep(message.delay)
@@ -196,21 +195,12 @@ def _entrypoint(
 
 
 @pytest.fixture
-async def entrypoint(
-    service: Service, _entrypoint: Entrypoint[User, Greeting]
-) -> AsyncGenerator[Entrypoint[User, Greeting], None]:
-    await service.start()
-    yield _entrypoint
-    await service.stop()
-
-
-@pytest.fixture
-def _invalid(
-    service: Service,
+def _error_entrypoint(
+    _service: Service,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
 ) -> Entrypoint[User, Greeting]:
-    @service.entrypoint(user_topic, greeting_topic)
+    @_service.entrypoint(user_topic, greeting_topic)
     async def greet(message: User) -> Greeting:
         raise RuntimeError("Test")
 
@@ -218,9 +208,20 @@ def _invalid(
 
 
 @pytest.fixture
-async def invalid(
-    service: Service, _invalid: Entrypoint[User, Greeting]
-) -> AsyncGenerator[Entrypoint[User, Greeting], None]:
-    await service.start()
-    yield _invalid
-    await service.stop()
+async def service(
+    _service: Service,
+    _entrypoint: Entrypoint[User, Greeting],
+) -> AsyncGenerator[Service, None]:
+    await _service.start()
+    yield _service
+    await _service.stop()
+
+
+@pytest.fixture
+async def error_service(
+    _service: Service,
+    _error_entrypoint: Entrypoint[User, Greeting],
+) -> AsyncGenerator[Service, None]:
+    await _service.start()
+    yield _service
+    await _service.stop()

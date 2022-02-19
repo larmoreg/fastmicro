@@ -74,7 +74,7 @@ async def test_exception(
     messaging: MessagingABC,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
-    _invalid: Entrypoint[User, Greeting],
+    _error_entrypoint: Entrypoint[User, Greeting],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
@@ -84,13 +84,15 @@ async def test_exception(
     input_header.message = input_message
 
     async with messaging:
-        await user_topic.subscribe(_invalid.name)
+        await user_topic.subscribe(_error_entrypoint.name)
         await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
-        await _invalid.process()
+        await _error_entrypoint.process()
 
-        async with _invalid.reply_topic.receive("test", "test") as output_headers:
+        async with _error_entrypoint.reply_topic.receive(
+            "test", "test"
+        ) as output_headers:
             assert len(output_headers) == 1
             output_header = output_headers[0]
             assert output_header.correlation_id == input_header.correlation_id
@@ -103,7 +105,7 @@ async def test_retries(
     messaging: MessagingABC,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
-    _invalid: Entrypoint[User, Greeting],
+    _error_entrypoint: Entrypoint[User, Greeting],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
@@ -113,13 +115,15 @@ async def test_retries(
     input_header.message = input_message
 
     async with messaging:
-        await user_topic.subscribe(_invalid.name)
+        await user_topic.subscribe(_error_entrypoint.name)
         await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
-        await _invalid.process(retries=1, sleep_time=0.1)
+        await _error_entrypoint.process(retries=1, sleep_time=0.1)
 
-        async with _invalid.reply_topic.receive("test", "test") as output_headers:
+        async with _error_entrypoint.reply_topic.receive(
+            "test", "test"
+        ) as output_headers:
             assert len(output_headers) == 1
             output_header = output_headers[0]
             assert output_header.correlation_id == input_header.correlation_id
@@ -132,7 +136,7 @@ async def test_resends(
     messaging: MessagingABC,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
-    _invalid: Entrypoint[User, Greeting],
+    _error_entrypoint: Entrypoint[User, Greeting],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
@@ -142,14 +146,16 @@ async def test_resends(
     input_header.message = input_message
 
     async with messaging:
-        await user_topic.subscribe(_invalid.name)
+        await user_topic.subscribe(_error_entrypoint.name)
         await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         for i in range(2):
-            await _invalid.process(resends=1)
+            await _error_entrypoint.process(resends=1)
 
-        async with _invalid.reply_topic.receive("test", "test") as output_headers:
+        async with _error_entrypoint.reply_topic.receive(
+            "test", "test"
+        ) as output_headers:
             assert len(output_headers) == 1
             output_header = output_headers[0]
             assert output_header.correlation_id == input_header.correlation_id
@@ -162,7 +168,7 @@ async def test_raises(
     messaging: MessagingABC,
     user_topic: Topic[User],
     greeting_topic: Topic[Greeting],
-    _invalid: Entrypoint[User, Greeting],
+    _error_entrypoint: Entrypoint[User, Greeting],
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     caplog.set_level(logging.CRITICAL, logger="fastmicro.entrypoint")
@@ -172,11 +178,11 @@ async def test_raises(
     input_header.message = input_message
 
     async with messaging:
-        await user_topic.subscribe(_invalid.name)
+        await user_topic.subscribe(_error_entrypoint.name)
         await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
         with pytest.raises(RuntimeError) as excinfo:
-            await _invalid.process(raises=True)
+            await _error_entrypoint.process(raises=True)
 
         assert str(excinfo.value) == "Test"

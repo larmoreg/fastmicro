@@ -11,6 +11,7 @@ from fastmicro.entrypoint import Entrypoint
 from fastmicro.messaging import MessagingABC
 from fastmicro.messaging.topic import Topic
 from fastmicro.serializer import SerializerABC
+from fastmicro.service import Service
 
 from .conftest import User, Greeting
 
@@ -65,13 +66,13 @@ async def test_serializer_performance(serializer_type: Type[SerializerABC]) -> N
 
 
 @pytest.mark.asyncio
-async def test_call_performance(entrypoint: Entrypoint[User, Greeting]) -> None:
+async def test_call_performance(service: Service) -> None:
     input_messages = [User(name=f"{i}") for i in range(1000)]
 
-    await entrypoint.call(input_messages[0])
+    await service.greet(input_messages[0])
 
     start = timer()
-    output_messages = await entrypoint.call(
+    output_messages = await service.greet(
         input_messages,
         batch_size=100,
     )

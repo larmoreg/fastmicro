@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastmicro"
-version = "0.3.2"
+version = "0.3.3"
 description = "Fast, simple microservice framework"
 authors = ["larmoreg <larmoreg@gmail.com>"]
 license = "MIT License"
@@ -19,6 +19,7 @@ classifiers = [
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
     "Operating System :: POSIX",
@@ -29,7 +30,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 pydantic = "^1.8.2"
-python = ">=3.7,<3.11"
+python = ">=3.7"
 uvloop = "^0.15.3"
 
 # kafka

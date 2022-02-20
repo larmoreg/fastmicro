@@ -63,10 +63,12 @@ class Messaging(MessagingABC):
     async def connect(self) -> None:
         if not self.initialized:
             self.redis = await aioredis.from_url(self.address)  # type: ignore
+            self.initialized = True
 
     async def cleanup(self) -> None:
         if self.initialized:
             await self.redis.close()
+            self.initialized = False
 
     async def subscribe(
         self, topic_name: str, group_name: str, latest: bool = False

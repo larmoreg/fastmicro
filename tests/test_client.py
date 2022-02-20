@@ -10,10 +10,11 @@ from .conftest import User, Greeting
 @pytest.mark.asyncio
 async def test_call(service: Service) -> None:
     input_message = User(name="Greg")
-    test_message = Greeting(name="Greg", greeting=f"Hello, {input_message.name}!")
+    test_message = Greeting(
+        name=input_message.name, greeting=f"Hello, {input_message.name}!"
+    )
 
     output_message = await service.greet(input_message)
-
     assert output_message == test_message
 
 
@@ -24,7 +25,7 @@ async def test_timeout(service: Service, caplog: pytest.LogCaptureFixture) -> No
     input_message = User(name="Greg", delay=1)
 
     with pytest.raises(asyncio.TimeoutError):
-        await service.greet(input_message, timeout=0.1)
+        await service.greet(input_message, processing_timeout=0.1)
 
 
 @pytest.mark.asyncio

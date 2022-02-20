@@ -217,29 +217,48 @@ class Entrypoint(Generic[AT, BT]):
     @overload
     async def call(
         self,
-        input_messages: AT,
+        input_message: AT,
         batch_size: int = BATCH_SIZE,
-        timeout: Optional[float] = CLIENT_TIMEOUT,
+        messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
+        processing_timeout: Optional[float] = CLIENT_TIMEOUT,
     ) -> BT:
         ...
 
     @overload
     async def call(
         self,
-        input_messages: List[AT],
+        input_message: List[AT],
         batch_size: int = BATCH_SIZE,
-        timeout: Optional[float] = CLIENT_TIMEOUT,
+        messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
+        processing_timeout: Optional[float] = CLIENT_TIMEOUT,
     ) -> List[BT]:
         ...
 
     async def call(
         self,
-        input_messages: Union[AT, List[AT]],
+        input_message: Union[AT, List[AT]],
         batch_size: int = BATCH_SIZE,
-        timeout: Optional[float] = CLIENT_TIMEOUT,
+        messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
+        processing_timeout: Optional[float] = CLIENT_TIMEOUT,
     ) -> Union[BT, List[BT]]:
-        if isinstance(input_messages, list):
-            return await self._call(input_messages, batch_size, timeout)
+        if isinstance(input_message, list):
+            input_messages = input_message
         else:
-            output_messages = await self._call([input_messages], batch_size, timeout)
-            return output_messages[0]
+            input_messages = [input_message]
+
+        if processing_timeout is not None:
+            try:
+                output_messages = await asyncio.wait_for(
+                    self._call(input_messages, batch_size, messaging_timeout),
+                    timeout=processing_timeout,
+                )
+            except asyncio.TimeoutError:
+                raise asyncio.TimeoutError(f"Timed out after {processing_timeout} sec")
+        else:
+            output_messages = await self._call(
+                input_messages, batch_size, messaging_timeout
+            )
+
+        if isinstance(input_message, list):
+            return output_messages
+        return output_messages[0]

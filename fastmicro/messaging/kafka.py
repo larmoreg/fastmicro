@@ -8,6 +8,7 @@ from typing import (
     cast,
     Dict,
     Generic,
+    List,
     Optional,
     Set,
     Sequence,
@@ -149,7 +150,7 @@ class Messaging(MessagingABC):
     ) -> None:
         pass
 
-    async def _receive(
+    async def _deserialize(
         self,
         raw_message: aiokafka.structs.ConsumerRecord,
         schema_type: Type[T],
@@ -158,6 +159,25 @@ class Messaging(MessagingABC):
         header.partition = raw_message.partition
         header.offset = raw_message.offset
         return header
+
+    async def _receive_batch(
+        self,
+        consumer: Consumer,
+        schema_type: Type[T],
+        batch_size: int,
+        timeout: Optional[float],
+    ) -> Sequence[Header[T]]:
+        temp = await consumer.getmany(
+            timeout_ms=int(timeout * 1000) if timeout is not None else sys.maxsize,
+            max_records=batch_size,
+        )
+        tasks = [
+            self._deserialize(message, schema_type)
+            for _, messages in temp.items()
+            for message in messages
+        ]
+        headers = await asyncio.gather(*tasks)
+        return cast(Sequence[Header[T]], headers)
 
     @asynccontextmanager
     async def receive(
@@ -171,23 +191,36 @@ class Messaging(MessagingABC):
     ) -> AsyncIterator[Sequence[Header[T]]]:
         key = topic_name, group_name
         consumer = self.consumers[key]
-        temp = await consumer.getmany(
-            timeout_ms=int(timeout * 1000) if timeout is not None else sys.maxsize,
-            max_records=batch_size,
-        )
-        if not temp.items():
-            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
+        if timeout is not None:
+            sleep: asyncio.Task[None] = asyncio.create_task(asyncio.sleep(timeout))
+
+            done = False
+            headers: List[Header[T]] = list()
+            while not done and len(headers) < batch_size:
+                receive = self._receive_batch(
+                    consumer, schema_type, batch_size - len(headers), timeout
+                )
+                complete, pending = await asyncio.wait(
+                    (receive, sleep), return_when=asyncio.FIRST_COMPLETED
+                )
+                for task in complete:
+                    if task == sleep:
+                        done = True
+                    else:
+                        temp = task.result()
+                        if temp:
+                            headers.extend(temp)
+        else:
+            headers = list()
+            while len(headers) < batch_size:
+                headers.extend(
+                    await self._receive_batch(
+                        consumer, schema_type, batch_size - len(headers), timeout
+                    )
+                )
 
         await consumer.lock.acquire()
-
-        tasks = [
-            self._receive(message, schema_type)
-            for _, messages in temp.items()
-            for message in messages
-        ]
-        headers = await asyncio.gather(*tasks)
-        yield cast(Sequence[Header[T]], headers)
-
+        yield headers
         consumer.lock.release()
 
     async def _send(

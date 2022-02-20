@@ -7,6 +7,7 @@ import logging
 import logging.config
 from pydantic import BaseModel
 import pytest
+from pytest import FixtureRequest
 from typing import AsyncGenerator, cast, Optional, Type
 
 from fastmicro.entrypoint import Entrypoint
@@ -34,8 +35,8 @@ def event_loop() -> asyncio.AbstractEventLoop:
 
 
 @pytest.fixture(params=backends, scope="session")
-def backend(request) -> str:  # type: ignore
-    return cast(str, request.param)
+def backend(request: FixtureRequest) -> str:
+    return request.param  # type: ignore
 
 
 @pytest.fixture(scope="session")
@@ -103,10 +104,13 @@ async def docker(backend: str) -> Optional[AsyncGenerator[Container, None]]:
 
                     await redis.set("foo", "bar")
                     assert await redis.get("foo") == b"bar"
+                    await redis.delete("foo")
                     return
                 except ConnectionError:
                     await asyncio.sleep(0.1)
                     pass
+                finally:
+                    await redis.close()
 
         try:
             await asyncio.wait_for(
@@ -126,12 +130,17 @@ async def docker(backend: str) -> Optional[AsyncGenerator[Container, None]]:
 
 @pytest.fixture(scope="session")
 def messaging_type(backend: str) -> Type[MessagingABC]:
-    return __import__(backend, fromlist=("Messaging",)).Messaging  # type: ignore
+    return cast(
+        Type[MessagingABC], __import__(backend, fromlist=("Messaging",)).Messaging  # type: ignore
+    )
 
 
 @pytest.fixture(params=serializers, scope="session")
-def serializer_type(request) -> Type[SerializerABC]:  # type: ignore
-    return __import__(cast(str, request.param), fromlist=("Serializer",)).Serializer  # type: ignore
+def serializer_type(request: FixtureRequest) -> Type[SerializerABC]:
+    return cast(
+        Type[MessagingABC],
+        __import__(request.param, fromlist=("Serializer",)).Serializer,  # type: ignore
+    )
 
 
 @pytest.fixture(scope="session")

@@ -85,7 +85,7 @@ class Messaging(MessagingABC):
     ) -> None:
         pass
 
-    async def _receive(
+    async def _deserialize(
         self, message_id: bytes, raw_message: Dict[bytes, bytes], schema_type: Type[T]
     ) -> Header[T]:
         header = cast(
@@ -94,16 +94,15 @@ class Messaging(MessagingABC):
         header.message_id = message_id
         return header
 
-    @asynccontextmanager
-    async def receive(
+    async def _receive_batch(
         self,
         topic_name: str,
         group_name: str,
         consumer_name: str,
         schema_type: Type[T],
-        batch_size: int = BATCH_SIZE,
-        timeout: Optional[float] = MESSAGING_TIMEOUT,
-    ) -> AsyncIterator[Sequence[Header[T]]]:
+        batch_size: int,
+        timeout: Optional[float],
+    ) -> Sequence[Header[T]]:
         temp = await self.redis.xreadgroup(
             group_name,
             consumer_name,
@@ -115,15 +114,26 @@ class Messaging(MessagingABC):
             if timeout > 0
             else None,
         )
-        if not temp:
-            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
-
         tasks = [
-            self._receive(message_id, message, schema_type)
-            for message_id, message in temp[0][1]
+            self._deserialize(message_id, raw_message, schema_type)
+            for message_id, raw_message in temp[0][1]
         ]
         headers = await asyncio.gather(*tasks)
-        yield cast(Sequence[Header[T]], headers)
+        return cast(Sequence[Header[T]], headers)
+
+    @asynccontextmanager
+    async def receive(
+        self,
+        topic_name: str,
+        group_name: str,
+        consumer_name: str,
+        schema_type: Type[T],
+        batch_size: int = BATCH_SIZE,
+        timeout: Optional[float] = MESSAGING_TIMEOUT,
+    ) -> AsyncIterator[Sequence[Header[T]]]:
+        yield await self._receive_batch(
+            topic_name, group_name, consumer_name, schema_type, batch_size, timeout
+        )
 
     async def _send(self, topic_name: str, header: Header[T]) -> None:
         serialized = await self.serialize(header)

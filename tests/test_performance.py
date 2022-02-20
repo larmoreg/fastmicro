@@ -68,6 +68,10 @@ async def test_serializer_performance(serializer_type: Type[SerializerABC]) -> N
 @pytest.mark.asyncio
 async def test_call_performance(service: Service) -> None:
     input_messages = [User(name=f"{i}") for i in range(1000)]
+    test_messages = [
+        Greeting(name=input_message.name, greeting=f"Hello, {input_message.name}!")
+        for input_message in input_messages
+    ]
 
     await service.greet(input_messages[0])
 
@@ -82,12 +86,8 @@ async def test_call_performance(service: Service) -> None:
     logger.info(f"{diff}s elapsed")
     logger.info("{} messages / s".format(1000 / diff))
 
-    assert len(output_messages) == len(input_messages)
-    for input_message, output_message in zip(
-        input_messages, sorted(output_messages, key=lambda x: int(x.name))
-    ):
-        assert output_message.name == input_message.name
-        assert output_message.greeting == f"Hello, {input_message.name}!"
+    assert len(output_messages) == len(test_messages)
+    assert sorted(output_messages, key=lambda x: int(x.name)) == test_messages
 
 
 @pytest.mark.asyncio
@@ -97,12 +97,16 @@ async def test_process_performance(
     greeting_topic: Topic[Greeting],
     _entrypoint: Entrypoint[User, Greeting],
 ) -> None:
-    input_messages = [User(name="Cara"), User(name="Greg")]
+    input_messages = [User(name=f"{i}") for i in range(1000)]
     input_headers = list()
     for input_message in input_messages:
         input_header = user_topic.header_type(correlation_id=uuid4())
         input_header.message = input_message
         input_headers.append(input_header)
+    test_messages = [
+        Greeting(name=input_message.name, greeting=f"Hello, {input_message.name}!")
+        for input_message in input_messages
+    ]
 
     async with messaging:
         await user_topic.subscribe(_entrypoint.name)
@@ -110,33 +114,23 @@ async def test_process_performance(
         await user_topic.send(input_headers)
 
         start = timer()
-        await _entrypoint.process(batch_size=2)
+        await _entrypoint.process(batch_size=1000)
         end = timer()
 
         diff = end - start
         logger.info(f"{diff}s elapsed")
         logger.info("{} messages / s".format(1000 / diff))
 
-        correlation_ids = set(
-            input_header.correlation_id for input_header in input_headers
-        )
         async with _entrypoint.reply_topic.receive(
-            "test", "test", batch_size=2
+            "test", "test", batch_size=1000
         ) as output_headers:
-            for output_header in output_headers:
-                if output_header.correlation_id in correlation_ids:
-                    correlation_ids.remove(output_header.correlation_id)
-
-                for input_header in input_headers:
-                    if output_header.correlation_id == input_header.correlation_id:
-                        assert not output_header.error
-                        assert output_header.message
-                        assert input_header.message
-                        assert output_header.message.name == input_header.message.name
-                        assert (
-                            output_header.message.greeting
-                            == f"Hello, {input_header.message.name}!"
-                        )
-        assert len(correlation_ids) == 0
-
-    pass
+            assert len(output_headers) == len(input_headers)
+            for input_header, test_message, output_header in zip(
+                input_headers,
+                test_messages,
+                sorted(output_headers, key=lambda x: int(x.message.name)),  # type: ignore
+            ):
+                assert output_header.correlation_id == input_header.correlation_id
+                assert not output_header.error
+                assert output_header.message
+                assert output_header.message == test_message

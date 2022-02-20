@@ -90,11 +90,31 @@ class Messaging(MessagingABC):
         tasks = [queue.nack(cast(bytes, header.message_id)) for header in headers]
         await asyncio.gather(*tasks)
 
-    async def _receive(self, queue: Queue[bytes], schema_type: Type[T]) -> Header[T]:
-        message_id, serialized = await queue.get()
+    async def _deserialize(
+        self, message_id: bytes, serialized: bytes, schema_type: Type[T]
+    ) -> Header[T]:
         header = cast(Header[T], await self.deserialize(serialized, schema_type))
         header.message_id = message_id
         return header
+
+    async def _receive(self, queue: Queue[bytes], schema_type: Type[T]) -> Header[T]:
+        message_id, serialized = await queue.get()
+        return await self._deserialize(message_id, serialized, schema_type)
+
+    async def _receive_batch(
+        self,
+        queue: Queue[bytes],
+        schema_type: Type[T],
+        batch_size: int,
+        timeout: Optional[float],
+    ) -> Sequence[Header[T]]:
+        tasks = [self._receive(queue, schema_type) for _ in range(batch_size)]
+        if timeout is not None:
+            done, pending = await asyncio.wait(tasks, timeout=timeout)
+            return [task.result() for task in done]
+        else:
+            headers = await asyncio.gather(*tasks)
+            return cast(Sequence[Header[T]], headers)
 
     @asynccontextmanager
     async def receive(
@@ -107,12 +127,7 @@ class Messaging(MessagingABC):
         timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[Sequence[Header[T]]]:
         queue = await self._get_queue(topic_name)
-        tasks = [self._receive(queue, schema_type) for i in range(batch_size)]
-        try:
-            headers = await asyncio.wait_for(asyncio.gather(*tasks), timeout=timeout)
-        except asyncio.TimeoutError:
-            raise asyncio.TimeoutError(f"Timed out after {timeout} sec")
-        yield cast(Sequence[Header[T]], headers)
+        yield await self._receive_batch(queue, schema_type, batch_size, timeout)
 
     async def _send(self, queue: Queue[bytes], header: Header[T]) -> None:
         serialized = await self.serialize(header)

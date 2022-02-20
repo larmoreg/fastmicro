@@ -19,6 +19,9 @@ async def test_process(
     input_message = User(name="Greg")
     input_header = user_topic.header_type(correlation_id=uuid4())
     input_header.message = input_message
+    test_message = Greeting(
+        name=input_message.name, greeting=f"Hello, {input_message.name}!"
+    )
 
     async with messaging:
         await user_topic.subscribe(_entrypoint.name)
@@ -33,11 +36,7 @@ async def test_process(
             assert output_header.correlation_id == input_header.correlation_id
             assert not output_header.error
             assert output_header.message
-            assert input_header.message
-            assert output_header.message.name == input_header.message.name
-            assert (
-                output_header.message.greeting == f"Hello, {input_header.message.name}!"
-            )
+            assert output_header.message == test_message
 
 
 @pytest.mark.asyncio
@@ -150,7 +149,7 @@ async def test_resends(
         await greeting_topic.subscribe("test", latest=True)
         await user_topic.send([input_header])
 
-        for i in range(2):
+        for _ in range(2):
             await _error_entrypoint.process(resends=1)
 
         async with _error_entrypoint.reply_topic.receive(

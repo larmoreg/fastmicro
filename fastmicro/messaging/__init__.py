@@ -11,7 +11,6 @@ from typing import (
 
 from fastmicro.env import BATCH_SIZE, MESSAGING_TIMEOUT
 from fastmicro.messaging.header import T, HeaderABC
-from fastmicro.messaging.topic import Topic
 from fastmicro.serializer import SerializerABC
 from fastmicro.serializer.json import Serializer
 
@@ -23,6 +22,7 @@ class MessagingABC(abc.ABC):
 
     def __init__(
         self,
+        *,
         serializer_type: Type[SerializerABC] = Serializer,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ):
@@ -84,6 +84,7 @@ class MessagingABC(abc.ABC):
         group_name: str,
         consumer_name: str,
         schema_type: Type[T],
+        *,
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[Sequence[HeaderABC[T]]]:
@@ -97,6 +98,3 @@ class MessagingABC(abc.ABC):
         headers: Sequence[HeaderABC[T]],
     ) -> None:
         raise NotImplementedError
-
-    def topic(self, name: str, schema_type: Type[T]) -> Topic[T]:
-        return Topic(self, name, schema_type)

@@ -16,14 +16,11 @@ class Greeting(BaseModel):
     greeting: str
 
 
-service = Service("test")
-loop = asyncio.get_event_loop()
-messaging = Messaging(loop=loop)
-user_topic = messaging.topic("user", User)
-greeting_topic = messaging.topic("greeting", Greeting)
+messaging = Messaging()
+service = Service("test", messaging)
 
 
-@service.entrypoint(user_topic, greeting_topic)
+@service.entrypoint(User, Greeting)
 async def greet(user: User) -> Greeting:
     ...
 
@@ -37,4 +34,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(main())

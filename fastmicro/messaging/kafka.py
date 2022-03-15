@@ -74,11 +74,12 @@ class Messaging(MessagingABC):
 
     def __init__(
         self,
+        *,
         bootstrap_servers: str = KAFKA_BOOTSTRAP_SERVERS,
         serializer_type: Type[SerializerABC] = Serializer,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
-        super().__init__(serializer_type, loop)
+        super().__init__(serializer_type=serializer_type, loop=loop)
         self.bootstrap_servers = bootstrap_servers
         self.initialized = False
 
@@ -186,6 +187,7 @@ class Messaging(MessagingABC):
         group_name: str,
         consumer_name: str,
         schema_type: Type[T],
+        *,
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
     ) -> AsyncIterator[Sequence[Header[T]]]:

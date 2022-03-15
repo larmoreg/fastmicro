@@ -154,12 +154,13 @@ async def messaging(
 
 @pytest.fixture
 def _service(
+    messaging: MessagingABC,
     event_loop: asyncio.AbstractEventLoop,
     caplog: pytest.LogCaptureFixture,
 ) -> Service:
     caplog.set_level(logging.CRITICAL, logger="aiokafka.consumer.group_coordinator")
 
-    return Service("test", loop=event_loop)
+    return Service("test", messaging, loop=event_loop)
 
 
 class User(BaseModel):
@@ -174,7 +175,6 @@ class Greeting(BaseModel):
 
 @pytest.fixture
 def user_topic(
-    backend: str,
     messaging: MessagingABC,
 ) -> Topic[User]:
     return Topic(messaging, "user", User)
@@ -182,7 +182,6 @@ def user_topic(
 
 @pytest.fixture
 def greeting_topic(
-    backend: str,
     messaging: MessagingABC,
 ) -> Topic[Greeting]:
     return Topic(messaging, "greeting", Greeting)
@@ -191,10 +190,8 @@ def greeting_topic(
 @pytest.fixture
 def _entrypoint(
     _service: Service,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
 ) -> Entrypoint[User, Greeting]:
-    @_service.entrypoint(user_topic, greeting_topic)
+    @_service.entrypoint(User, Greeting, topic_name="user", reply_topic_name="greeting")
     async def greet(message: User) -> Greeting:
         if message.delay:
             await asyncio.sleep(message.delay)
@@ -206,10 +203,8 @@ def _entrypoint(
 @pytest.fixture
 def _error_entrypoint(
     _service: Service,
-    user_topic: Topic[User],
-    greeting_topic: Topic[Greeting],
 ) -> Entrypoint[User, Greeting]:
-    @_service.entrypoint(user_topic, greeting_topic)
+    @_service.entrypoint(User, Greeting, topic_name="user", reply_topic_name="greeting")
     async def greet(message: User) -> Greeting:
         raise RuntimeError("Test")
 

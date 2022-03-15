@@ -53,6 +53,7 @@ class Topic(Generic[T]):
         self,
         group_name: str,
         consumer_name: str,
+        *,
         batch_size: int = BATCH_SIZE,
         timeout: Optional[float] = MESSAGING_TIMEOUT,
         latest: bool = False,
@@ -64,8 +65,8 @@ class Topic(Generic[T]):
             group_name,
             consumer_name,
             self.schema_type,
-            batch_size,
-            timeout,
+            batch_size=batch_size,
+            timeout=timeout,
         ) as headers:
             if logger.isEnabledFor(logging.DEBUG):
                 for header in headers:

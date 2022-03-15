@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import asyncio
 from pydantic import BaseModel
 
 from fastmicro.messaging.redis import Messaging
@@ -16,14 +15,11 @@ class Greeting(BaseModel):
     greeting: str
 
 
-service = Service("test")
-loop = asyncio.get_event_loop()
-messaging = Messaging(loop=loop)
-user_topic = messaging.topic("user", User)
-greeting_topic = messaging.topic("greeting", Greeting)
+messaging = Messaging()
+service = Service("test", messaging)
 
 
-@service.entrypoint(user_topic, greeting_topic)
+@service.entrypoint(User, Greeting)
 async def greet(user: User) -> Greeting:
     print(user)
     greeting = Greeting(name=user.name, greeting=f"Hello, {user.name}!")

@@ -29,6 +29,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
+inflection = "^0.5.1"
 pydantic = "^1.8.2"
 python = ">=3.7"
 uvloop = "^0.15.3"

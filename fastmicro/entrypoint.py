@@ -9,6 +9,7 @@ from typing import (
     List,
     Optional,
     overload,
+    Sequence,
     TypeVar,
     Union,
 )
@@ -40,8 +41,10 @@ class Entrypoint(Generic[AT, BT]):
         callback: Callable[[AT], Awaitable[BT]],
         topic: Topic[AT],
         reply_topic: Topic[BT],
+        *,
         consumer_name: str = str(uuid4()),
         broadcast: bool = False,
+        broadcast_name: Optional[str] = None,
         loop: asyncio.AbstractEventLoop = asyncio.get_event_loop(),
     ) -> None:
         self.name = name
@@ -50,7 +53,10 @@ class Entrypoint(Generic[AT, BT]):
         self.reply_topic = reply_topic
         self.consumer_name = consumer_name
         self.broadcast = broadcast
-        self.broadcast_name = name + "_" + consumer_name
+        if broadcast_name:
+            self.broadcast_name = broadcast_name
+        else:
+            self.broadcast_name = name + "_" + consumer_name
         self.loop = loop
         self.task: Optional[asyncio.Task[None]] = None
 
@@ -77,6 +83,7 @@ class Entrypoint(Generic[AT, BT]):
 
     async def process(
         self,
+        *,
         batch_size: int = BATCH_SIZE,
         messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
         processing_timeout: Optional[float] = SERVER_TIMEOUT,
@@ -169,10 +176,10 @@ class Entrypoint(Generic[AT, BT]):
 
     async def _call(
         self,
-        input_messages: List[AT],
+        input_messages: Sequence[AT],
         batch_size: int,
         timeout: Optional[float],
-    ) -> List[BT]:
+    ) -> Sequence[BT]:
         input_headers = [
             self.topic.header_type(correlation_id=uuid4(), message=input_message)
             for input_message in input_messages
@@ -218,6 +225,7 @@ class Entrypoint(Generic[AT, BT]):
     async def call(
         self,
         input_message: AT,
+        *,
         batch_size: int = BATCH_SIZE,
         messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
         processing_timeout: Optional[float] = CLIENT_TIMEOUT,
@@ -227,20 +235,22 @@ class Entrypoint(Generic[AT, BT]):
     @overload
     async def call(
         self,
-        input_message: List[AT],
+        input_message: Sequence[AT],
+        *,
         batch_size: int = BATCH_SIZE,
         messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
         processing_timeout: Optional[float] = CLIENT_TIMEOUT,
-    ) -> List[BT]:
+    ) -> Sequence[BT]:
         ...
 
     async def call(
         self,
-        input_message: Union[AT, List[AT]],
+        input_message: Union[AT, Sequence[AT]],
+        *,
         batch_size: int = BATCH_SIZE,
         messaging_timeout: Optional[float] = MESSAGING_TIMEOUT,
         processing_timeout: Optional[float] = CLIENT_TIMEOUT,
-    ) -> Union[BT, List[BT]]:
+    ) -> Union[BT, Sequence[BT]]:
         if isinstance(input_message, list):
             input_messages = input_message
         else:
